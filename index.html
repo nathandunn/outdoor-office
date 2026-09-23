@@ -187,6 +187,10 @@ table.rc { border-collapse: collapse; width: 100%; font-size: 15px; margin-top: 
 .pro { color: #2e7d32; font-weight: 700; } .con { color: var(--you); font-weight: 700; }
 .cons li.near { background: #fff6fb; margin-left: -4px; padding-left: 4px; border-radius: 3px; }
 .reach { color: var(--you); font-weight: 700; font-size: 12px; }
+.slide.picked { background: #fff6fb; box-shadow: 4px 4px 0 var(--hi); border-color: var(--you); }
+.num { display: inline-block; min-width: 22px; height: 22px; line-height: 22px; text-align: center; border-radius: 50%; background: var(--you); color: #fff; font-family: var(--body); font-size: 13px; font-weight: 700; }
+.pres label { display: block; margin: 6px 0; font-size: 14px; }
+.pres select { font: inherit; font-size: 14px; padding: 3px 6px; border: 2px solid var(--ink); border-radius: 4px; background: #fff; max-width: 100%; }
 .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid var(--ink); vertical-align: -1px; margin-right: 5px; }
 </style>
 </head>
@@ -199,7 +203,7 @@ table.rc { border-collapse: collapse; width: 100%; font-size: 15px; margin-top: 
       <div class="score" id="score"></div>
       <button class="help" id="help" aria-label="How it plays" title="How it plays">?</button>
     </header>
-    <svg id="board" viewBox="0 0 1000 620" role="img" aria-label="Floor plan of the office with both parties on it"></svg>
+    <svg id="board" viewBox="0 0 1000 690" role="img" aria-label="Floor plan of the office with both parties on it"></svg>
     <div class="legend" id="legend"></div>
   </section>
   <aside class="col">
@@ -352,6 +356,11 @@ class Game {
     this.breaks = { 0: 0, 1: 0 };
     this.turn = 1; this.side = P; this.first = N; this.log = []; this.over = false; this.winner = NONE; this.how = '';
     for (let y = 0; y < A.H; y++) for (let x = 0; x < A.W; x++) if (DESKS[this.map[y][x]] !== undefined) this.stock[key(x, y)] = A.DESK_STOCK;
+    // What each supply closet holds is decided now and can be read from the door.
+    this.closets = {};
+    for (let y = 0; y < A.H; y++) for (let x = 0; x < A.W; x++) if (this.map[y][x] === 'C') {
+      this.closets[key(x, y)] = [0, 1].map(() => ({ taste: this.ri(4), q: this.r() < 0.35 ? 3 : 2, name: this.pick(GOLD) }));
+    }
   }
   r() { return this.rng(); }
   ri(n) { return Math.floor(this.rng() * n); }
@@ -439,6 +448,9 @@ class Game {
       this.neutrals.push({ id: this.nextId++, kind: 'consultant', cid: c.id, name: c.name, what: c.what, role: RO.STAFF, taste: this.ri(4), x, y, amt: 0, for: NONE, side: NONE });
     }
     for (const c of CONTRACTORS) this.addContractorNpc(c, LOBBY_SPOTS[spot++]);
+    // A coin for who opens turn 1. Openers alternate, so this also decides who closes the last turn before all hands.
+    this.first = this.r() < 0.5 ? P : N;
+    this.say(NONE, `${this.first === P ? 'You open' : 'They open'} the first turn; openers alternate, so ${this.first === P ? 'they' : 'you'} get the last word before all hands.`);
     this.startTurn(this.first);
   }
   addContractorNpc(c, at) {
@@ -553,7 +565,7 @@ class Game {
       if (DESKS[t] !== undefined && u.cards.length < A.CARRY && this.stock[key(x, y)] > 0) {
         out.push({ kind: 'desk', x, y, taste: DESKS[t], label: `Take a ${TASTE[DESKS[t]]} card`, sub: `${this.stock[key(x, y)]} left on this desk; ${this.demand(u.side)[DESKS[t]]} of yours want ${TASTE[DESKS[t]]}${DESKS[t] === 2 && this.gadgetHand(u) ? '; quality 2 in these hands' : ''}` });
       }
-      if (t === 'C' && this.raidable(u.side, x)) out.push({ kind: 'closet', x, y, label: 'Raid their supply closet', sub: 'two good slides, quality 2 or 3; first come, first served' });
+      if (t === 'C' && this.raidable(u.side, x)) out.push({ kind: 'closet', x, y, label: 'Raid their supply closet', sub: (this.closets[key(x, y)] || []).map(c => `${c.name} (${TASTE[c.taste]} q${c.q})`).join(' and ') });
       const n = this.neutralAt(x, y);
       if (n) {
         const amt = this.pitchAmt(u);
@@ -656,8 +668,8 @@ class Game {
       case 'desk': this.takeFromDesk(u, a.x, a.y); break;
       case 'closet': {
         this.map[a.y][a.x] = 'c';
-        const got = [];
-        for (let i = 0; i < 2; i++) { const c = { taste: this.ri(4), q: this.r() < 0.35 ? 3 : 2, name: this.pick(GOLD) }; got.push(c); }
+        const got = this.closets[key(a.x, a.y)] || [];
+        delete this.closets[key(a.x, a.y)];
         for (const c of got) { if (u.cards.length < A.CARRY) u.cards.push(c); else (this.loot[key(u.x, u.y)] ||= []).push(c); }
         this.say(u.side, `${u.name} raided a supply closet: ${got.map(c => `${c.name} (${TASTE[c.taste]}, q${c.q})`).join(', ')}.`);
         break;
@@ -953,14 +965,18 @@ class Game {
   }
   leader(side) { return this.units.find(u => u.side === side && u.leader); }
   fans(T, side, taste) { return T.sides[side].audience.filter(a => a.taste === taste).length; }
-  slideClaps(T, side, c) {
+  presenters(side) { const a = this.active(side).filter(u => u.kind === 'staff'); return a.length ? a : [this.leader(side)]; }
+  presenter(side, by) { return (by !== undefined && this.units.find(u => u.id === by && u.side === side)) || this.leader(side); }
+  // Whoever stands up with the slide brings their own Charm to it, and an Engineer or IT makes a Gadget land harder.
+  slideClaps(T, side, c, by) {
     if (c.taste < 0) return 0;
-    let v = c.q * (2 + 3 * this.fans(T, side, c.taste)) * (1 + 0.1 * this.leader(side).stats[0]);
+    const who = this.presenter(side, by === undefined ? c.by : by);
+    let v = c.q * (2 + 3 * this.fans(T, side, c.taste)) * (1 + 0.1 * who.stats[0]);
     if (c.taste === 0 && this.has(side, 'data')) v *= 1.5;
-    if (c.taste === 2 && this.gadgetHand(this.leader(side))) v += this.fans(T, side, 2);
+    if (c.taste === 2 && this.gadgetHand(who)) v += this.fans(T, side, 2);
     return Math.round(v) + (this.has(side, 'keynote') ? 3 : 0);
   }
-  // Best three, no two of a taste in a row where it can be helped.
+  // Best three, no two of a taste in a row where it can be helped, each with the best free presenter.
   aiPick(T, side) {
     const S = T.sides[side];
     const idx = S.hand.map((c, i) => i).sort((a, b) => this.slideClaps(T, side, S.hand[b]) - this.slideClaps(T, side, S.hand[a]));
@@ -970,16 +986,25 @@ class Game {
       const pick = idx.find(i => !out.includes(i) && S.hand[i].taste !== prev) ?? idx.find(i => !out.includes(i));
       out.push(pick);
     }
-    return out;
+    const free = this.presenters(side).slice();
+    return out.map(i => {
+      const c = S.hand[i];
+      let best = free[0] || this.leader(side), bv = -1;
+      for (const u of free) { const v = this.slideClaps(T, side, c, u.id); if (v > bv) { bv = v; best = u; } }
+      if (free.length > 1) free.splice(free.indexOf(best), 1);
+      return { i, by: best.id };
+    });
   }
-  chooseFor(T, side, idxs) {
+  // picks: [{i, by}] or plain indices (the leader presents).
+  chooseFor(T, side, picks) {
     const S = T.sides[side];
-    S.chosen = idxs.slice(0, A.SLIDES).map(i => S.hand[i]).filter(Boolean);
+    S.chosen = picks.slice(0, A.SLIDES).map(p => typeof p === 'number' ? { i: p, by: this.leader(side).id } : p)
+      .filter(p => S.hand[p.i]).map(p => ({ ...S.hand[p.i], by: p.by }));
     if (this.rigged[side] && S.chosen.length) {
       let bi = 0;
       for (let i = 0; i < S.chosen.length; i++) if (this.slideClaps(T, side, S.chosen[i]) > this.slideClaps(T, side, S.chosen[bi])) bi = i;
       S.blanked = S.chosen[bi];
-      S.chosen[bi] = { taste: -1, q: 0, name: A.DUD };
+      S.chosen[bi] = { taste: -1, q: 0, name: A.DUD, by: S.chosen[bi].by };
     }
   }
   slotsLeft(T) { return T.slot < A.SLIDES * 2; }
@@ -987,9 +1012,10 @@ class Game {
     const side = T.order[T.slot % 2], i = Math.floor(T.slot / 2);
     const S = T.sides[side];
     T.slot++;
-    const who = side === P ? 'You' : 'They';
     const c = S.chosen[i];
-    if (!c) { T.lines.push(`${who} had no slide ${i + 1}.`); return; }
+    if (!c) { T.lines.push(`${side === P ? 'You' : 'They'} had no slide ${i + 1}.`); return; }
+    const pr = this.presenter(side, c.by);
+    const who = pr.leader ? (side === P ? 'You' : 'Your nemesis') : `${pr.name}${side === P ? '' : ' (theirs)'}`;
     const bored = T.last && c.taste >= 0 && T.last.taste === c.taste;
     const cl = bored ? 0 : this.slideClaps(T, side, c);
     const b = 2 * S.booers.length + (c.taste < 0 ? 4 : 0);
@@ -997,18 +1023,19 @@ class Game {
     T.lines.push(c.taste < 0 ? `${who}: a blank slide. ${b} boos.`
       : `${who}: ${c.name} (${TASTE[c.taste]} q${c.q})${bored ? ', but the room just saw ' + TASTE[c.taste] + ': nothing' : `: ${cl} claps`}${b ? `, ${b} boos` : ''}.`);
     T.last = c;
-    if (i === 1 && S.booers.length && !S.heckled) T.pending = side;
+    if (i === 1 && S.booers.length && !S.heckled) { T.pending = side; S.heckledBy = pr.id; }
   }
-  heckleOdds(side) { return Math.min(0.9, 0.55 + 0.05 * this.leader(side).stats[3]); }
-  ignoreCost(side) { return Math.max(1, 5 - this.leader(side).stats[3]); }
+  heckleOdds(side, by) { return Math.min(0.9, 0.55 + 0.05 * this.presenter(side, by).stats[3]); }
+  ignoreCost(side, by) { return Math.max(1, 5 - this.presenter(side, by).stats[3]); }
   resolveHeckle(T, side, back) {
     const S = T.sides[side];
     S.heckled = true; T.pending = null;
-    const who = side === P ? 'You' : 'They';
+    const pr = this.presenter(side, S.heckledBy);
+    const who = pr.leader ? (side === P ? 'You' : 'Your nemesis') : pr.name;
     if (back) {
-      if (this.r() < this.heckleOdds(side)) { S.claps += 10; T.lines.push(`${who} clapped back and the room roared: +10.`); }
+      if (this.r() < this.heckleOdds(side, pr.id)) { S.claps += 10; T.lines.push(`${who} clapped back and the room roared: +10.`); }
       else { S.boos += 6; T.lines.push(`${who} clapped back and it fell flat: +6 boos.`); }
-    } else { const c = this.ignoreCost(side); S.boos += c; T.lines.push(`${who} let the heckle go: +${c} boos.`); }
+    } else { const c = this.ignoreCost(side, pr.id); S.boos += c; T.lines.push(`${who} let the heckle go: +${c} boos.`); }
   }
   finishTalk(T) {
     for (const side of [P, N]) { const S = T.sides[side]; S.score = S.claps - S.boos; this.say(side, `${side === P ? 'Your' : 'Their'} talk: ${S.claps} claps, ${S.boos} boos, ${S.score} all told.`); }
@@ -1050,7 +1077,7 @@ class Game {
         await H('talkUpdate', T);
         if (T.pending !== null) {
           const side = T.pending;
-          this.resolveHeckle(T, side, side === P ? await agent.chooseHeckle(T, this) : this.heckleOdds(N) >= 0.5);
+          this.resolveHeckle(T, side, side === P ? await agent.chooseHeckle(T, this) : this.heckleOdds(N, T.sides[N].heckledBy) >= 0.5);
           await H('talkUpdate', T);
         }
       }
@@ -1128,7 +1155,7 @@ function drawBoard() {
     <pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(40)"><line x1="0" y1="0" x2="0" y2="7" stroke="${INK}" stroke-width="3"/></pattern>
     <pattern id="waves" width="16" height="8" patternUnits="userSpaceOnUse"><path d="M0 4 Q4 0 8 4 T16 4" fill="none" stroke="${THEM}" stroke-width="1.6"/></pattern>
   </defs>`;
-  for (let y = 11; y < 620; y += 23) s += `<line x1="0" x2="1000" y1="${y}" y2="${y}" stroke="#9cc3d9" stroke-width="1" opacity=".6"/>`;
+  for (let y = 11; y < 690; y += 23) s += `<line x1="0" x2="1000" y1="${y}" y2="${y}" stroke="#9cc3d9" stroke-width="1" opacity=".6"/>`;
   // floor features
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const t = G.map[y][x], X = OX + x * CS, Y = OY + y * CS;
@@ -1150,7 +1177,10 @@ function drawBoard() {
       for (let i = 0; i < st; i++) s += `<circle cx="${X + 9 + i * 7}" cy="${Y + 10}" r="2.4" fill="${INK}"/>`;
       s += `</g>`;
     }
-    if (t === 'C' || t === 'c') s += `<g><title>${t === 'C' ? (G.raidable(P, x) ? 'Their supply closet: two good slides inside, yours to raid' : 'Your supply closet: locked to you, theirs to raid') : 'An emptied supply closet'}</title>${ICON.closet(X, Y, t === 'c')}</g>`;
+    if (t === 'C' || t === 'c') {
+      const inside = (G.closets[key(x, y)] || []).map(c => `${c.name} (${TASTE[c.taste]}, quality ${c.q})`).join(' and ');
+      s += `<g><title>${t === 'C' ? (G.raidable(P, x) ? `Their supply closet, yours to raid: ${inside}` : `Your supply closet, locked to you and theirs to raid: ${inside}`) : 'An emptied supply closet'}</title>${ICON.closet(X, Y, t === 'c')}</g>`;
+    }
   }
   for (const [x, y, l] of LABELS) s += `<text class="hand" x="${cx(x)}" y="${OY + y * CS + 11}" text-anchor="middle" font-size="17" fill="${INK}" opacity=".55">${l}</text>`;
   // loot on the floor
@@ -1204,6 +1234,19 @@ function drawBoard() {
     if (u.rooted) s += `<text x="${X - 22}" y="${Y - 10}" font-size="14" fill="${INK}">⛓</text>`;
     s += `</g>`;
   }
+  // the car park: everyone who is sulking, and how long for
+  const parked = G.units.filter(u => u.sulk > 0 && !u.gone);
+  const PY = OY + A.H * CS + 8;
+  s += `<rect x="${OX}" y="${PY}" width="${A.W * CS}" height="52" fill="none" stroke="${INK}" stroke-width="1.6" stroke-dasharray="6 4" rx="4"/>`;
+  s += `<text class="hand" x="${OX + 12}" y="${PY + 22}" font-size="18" fill="${INK}" opacity=".7">Car park</text>`;
+  s += `<text x="${OX + 12}" y="${PY + 42}" font-size="11" fill="${INK}" opacity=".55">${parked.length ? 'sulking; back at 2 morale' : 'empty, for now'}</text>`;
+  parked.forEach((u, i) => {
+    const X = OX + 150 + i * 96, Y = PY + 26, c = u.side === P ? YOU : THEM;
+    s += `<g class="unit" data-id="${u.id}" style="cursor:pointer"><title>${esc(u.name)}, sulking${u.sulk >= 99 ? ' for the rest of the match' : `, back in ${u.sulk} turn${u.sulk === 1 ? '' : 's'}`}</title>
+      <circle cx="${X}" cy="${Y}" r="14" fill="${c}" stroke="${INK}" stroke-width="${u.leader ? 3.5 : 2}" opacity=".7"/>
+      <text x="${X}" y="${Y + 4}" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">${SHORT[u.job] || u.name.slice(0, 3)}</text>
+      <text class="hand" x="${X + 20}" y="${Y + 5}" font-size="15" fill="${INK}">${u.sulk >= 99 ? 'out' : `back in ${u.sulk}`}</text></g>`;
+  });
   const svg = $('#board');
   svg.innerHTML = s;
   const legendEl = $('#legend'); if (legendEl && !legendEl.innerHTML) legend();
@@ -1275,6 +1318,10 @@ function render() {
     ${flags.length ? `<p class="flags">${flags.map(esc).join('. ')}.</p>` : ''}
     <div class="cons"><b>Undecided on the floor</b> <span class="who">(${G.neutrals.filter(n => n.kind === 'n').length}; two pitches each${canPitch.size ? `, ${canPitch.size} within reach of ${esc(G.byId(UI.sel).name)}` : ''})</span>
       <ul>${G.neutrals.filter(n => n.kind === 'n').map(n => `<li class="${canPitch.has(n.id) ? 'near' : ''}"><span class="dot" style="background:${leanFill(n)};border-color:${n.amt && n.for !== NONE ? (n.for === P ? YOU : THEM) : INK}"></span><b>${esc(n.name)}</b>, ${ROLE_NAME[n.role]}, wants ${TASTE_GLYPH[n.taste]} ${TASTE[n.taste]}${n.amt ? `; <span style="color:${n.for === P ? YOU : THEM}">warming to ${n.for === P ? 'you' : 'them'} (${n.amt} of ${A.JOIN_AT})</span>` : ''}${canPitch.has(n.id) ? ' <span class="reach">in reach</span>' : ''}</li>`).join('') || '<li class="who">Nobody left to win over.</li>'}</ul></div>
+    <div class="cons"><b>Worth going for</b> <span class="who">(a quality 3 slide is worth three desk cards)</span><ul>
+      ${Object.keys(G.closets).map(k => { const [x, y] = k.split(',').map(Number); const mine = !G.raidable(P, x); return `<li><b>${mine ? 'Your' : 'Their'} closet</b>${mine ? ' (only they can raid it)' : ''}: ${G.closets[k].map(c => `${TASTE_GLYPH[c.taste]} ${esc(c.name)} q${c.q}`).join(', ')}</li>`; }).join('')}
+      ${Object.keys(G.loot).map(k => `<li><b>On the floor</b>: ${G.loot[k].map(c => `${TASTE_GLYPH[c.taste]} ${esc(c.name)} q${c.q}`).join(', ')}</li>`).join('')}
+      ${Object.keys(G.closets).length + Object.keys(G.loot).length ? '' : '<li class="who">Nothing left lying about.</li>'}</ul></div>
     <div class="cons"><b>In the Lobby</b> <span class="who">(consultants take three pitches; contractors sign on one)</span><ul>${G.neutrals.filter(n => n.kind !== 'n').map(n => `<li class="${canPitch.has(n.id) ? 'near' : ''}"><span class="dot" style="background:${n.kind === 'consultant' ? leanFill(n) : '#fffdf6'};border-color:${n.kind === 'consultant' && n.amt && n.for !== NONE ? (n.for === P ? YOU : THEM) : INK}"></span><b>${esc(n.name)}</b>${n.kind === 'consultant' ? (n.side === P ? ', <b>consulting for you</b>' : n.side === N ? `, <span style="color:${THEM}">consulting for them</span>` : n.amt ? `, warming to ${n.for === P ? 'you' : 'them'} (${n.amt} of 3)` : ', uncommitted') : ', contractor, waiting'}. <span class="who">${esc(n.what)}.</span>${canPitch.has(n.id) ? ' <span class="reach">in reach</span>' : ''}</li>`).join('')}</ul></div>`;
   renderUnit();
   renderRoster();
@@ -1427,21 +1474,30 @@ function talkSheet(T, mode, resolve) {
   let wire = null;
   if (mode === 'pick') {
     const picked = talkSheet.picked || (talkSheet.picked = []);
-    body += `<p class="who">You will not see their three until the slides go up, and they alternate: a slide that repeats the taste the room just saw gets nothing. ${S.hand.length ? `Pick ${Math.min(3, S.hand.length)} of your ${S.hand.length}.` : 'You have no cards at all.'}</p>
-      <div class="row">${S.hand.map((c, i) => `<button class="slide ${picked.includes(i) ? 'hot' : ''}" data-i="${i}" style="${picked.includes(i) ? `box-shadow:4px 4px 0 ${HI};background:#fff6fb` : ''}">
-        <b>${picked.includes(i) ? (picked.indexOf(i) + 1) + '. ' : ''}${TASTE_GLYPH[c.taste]} ${esc(c.name)}</b><small>quality ${c.q}; ${fans[c.taste]} in your room want ${TASTE[c.taste]}; about ${G.slideClaps(T, P, c)} claps</small></button>`).join('')}</div>
-      <div class="row"><button class="btn" id="go" ${picked.length < Math.min(3, S.hand.length) ? 'disabled' : ''}>Present these</button></div>`;
+    const by = talkSheet.by || (talkSheet.by = {});
+    const pres = G.presenters(P);
+    const want = Math.min(3, S.hand.length);
+    const claps = (c, u) => G.slideClaps(T, P, c, u);
+    body += `<p class="who">Click up to three cards, in the order they go up. Their three stay hidden until the slides alternate, and a slide that repeats the taste the room just saw gets nothing. ${S.hand.length ? '' : 'You have no cards at all.'}</p>
+      <div class="row">${S.hand.map((c, i) => { const k = picked.indexOf(i); return `<button class="slide ${k >= 0 ? 'picked' : ''}" data-i="${i}">
+        <b>${k >= 0 ? `<span class="num">${k + 1}</span> ` : ''}${TASTE_GLYPH[c.taste]} ${esc(c.name)}</b><small>quality ${c.q}; ${fans[c.taste]} in your room want ${TASTE[c.taste]}; about ${claps(c, G.leader(P).id)} claps if you present it</small></button>`; }).join('')}</div>
+      ${picked.length ? `<h3>Who presents each</h3><div class="pres">${picked.map((i, k) => { const c = S.hand[i]; return `<label><span class="num">${k + 1}</span> ${TASTE_GLYPH[c.taste]} ${esc(c.name)}: <select data-k="${i}">${pres.map(u => `<option value="${u.id}" ${(by[i] ?? G.leader(P).id) === u.id ? 'selected' : ''}>${esc(u.name)}${u.leader ? '' : ` (${ROLE_NAME[u.job]}, Charm ${u.stats[0]})`}: about ${claps(c, u.id)} claps${c.taste === 2 && G.gadgetHand(u) ? ', knows gadgets' : ''}</option>`).join('')}</select></label>`; }).join('')}</div>` : ''}
+      <p class="who">${picked.length} of ${want} picked${picked.length && picked.length < want ? '; you can present fewer, but every empty slot is claps you are not getting' : ''}.</p>
+      <div class="row"><button class="btn" id="go" ${picked.length || !S.hand.length ? '' : 'disabled'}>Present ${picked.length === 1 ? 'this one' : 'these'}</button></div>`;
     wire = el => {
       el.querySelectorAll('.slide').forEach(b => b.onclick = () => { const i = +b.dataset.i; const k = picked.indexOf(i); if (k >= 0) picked.splice(k, 1); else if (picked.length < 3) picked.push(i); talkSheet(T, 'pick', resolve); });
-      el.querySelector('#go').onclick = () => { const out = picked.slice(); talkSheet.picked = null; resolve(out); };
+      el.querySelectorAll('select').forEach(sel => sel.onchange = () => { by[+sel.dataset.k] = +sel.value; talkSheet(T, 'pick', resolve); });
+      el.querySelector('#go').onclick = () => { const out = picked.map(i => ({ i, by: by[i] ?? G.leader(P).id })); talkSheet.picked = null; talkSheet.by = null; resolve(out); };
     };
   } else {
     body += `<p><b style="color:${YOU}">You</b></p>${meter(S, '')}<p style="margin-top:8px"><b style="color:${THEM}">Them</b></p>${meter(E, 'them')}
       ${T.lines.length ? `<ol class="lines">${T.lines.map(l => `<li>${esc(l)}</li>`).join('')}</ol>` : ''}`;
     if (mode === 'heckle') {
       const who = S.booers[Math.floor(Math.random() * S.booers.length)];
+      const pr = G.presenter(P, S.heckledBy);
       body += `<p class="heckle">${who ? esc(who.name) + ': ' : ''}“${esc(HECKLES[Math.floor(Math.random() * HECKLES.length)])}”</p>
-        <div class="row"><button class="btn alt" id="ign">Let it go, +${G.ignoreCost(P)} boos</button><button class="btn" id="cb">Clap back, ${Math.round(100 * G.heckleOdds(P))}% to land</button></div>
+        <p class="who">${pr.leader ? 'You are' : esc(pr.name) + ' is'} at the lectern, with Grit ${pr.stats[3]}.</p>
+        <div class="row"><button class="btn alt" id="ign">Let it go, +${G.ignoreCost(P, pr.id)} boos</button><button class="btn" id="cb">Clap back, ${Math.round(100 * G.heckleOdds(P, pr.id))}% to land</button></div>
         <p class="who" style="margin-top:8px">Landing is +10 claps. Missing is +6 boos.</p>`;
       wire = el => { el.querySelector('#ign').onclick = () => resolve(false); el.querySelector('#cb').onclick = () => resolve(true); };
     } else if (mode === 'end') {
@@ -1475,7 +1531,7 @@ const RULES = [
   ['A turn', `<p>The match is eight turns. Each turn, both parties go: whoever opened the last turn closes this one. On your go, every one of your people may move up to their move (3, plus one for every two points of Hustle) and then do one thing:</p>
     <ul><li><b>Argue</b> with an enemy on an adjacent tile. Your Charm against their Grit, in morale; they answer back for half.</li>
     <li><b>Take a card</b> from an adjacent desk. Two per desk, and they do not restock.</li>
-    <li><b>Raid</b> the other side's supply closet for two good slides. Your own closets are locked to you.</li>
+    <li><b>Raid</b> the other side's supply closet. What is inside is written on the door: two slides of quality 2 or 3, each worth two or three desk cards at the talk. Your own closets are locked to you.</li>
     <li><b>Pitch</b> somebody undecided. Two pitches and they are your follower. Pitching someone the other side has been courting wears that down first.</li>
     <li><b>Use the job ability</b>, then wait three turns for it to come back. Most need the target next to you; the ones that reach further are shouted, or sent over the network.</li>
     <li><b>Pickpocket</b> an enemy who is carrying cards.</li>
@@ -1487,8 +1543,8 @@ const RULES = [
   ['Followers', `<p>Followers are the only thing you keep. Every undecided person on the floor can be won over, and every one you win fills a seat at your final talk, wanting a particular taste of slide. A room full of people who want Data makes a Data slide land; a room that wants nothing you brought stays quiet.</p>
     <p>When time is called, every undecided person still on the floor goes with whichever party has more people standing beside them. Where your units end the last turn matters.</p>`],
   ['The Lobby', `<p>Consultants and contractors wait in the Lobby and are won by pitching, like anyone else. A consultant takes three pitches, then gives your side a standing rule for the rest of the match; the other side can pitch them back. A contractor signs on one pitch, joins your party for two turns, and then goes back to the Lobby to be signed again.</p>`],
-  ['Ending and winning', `<p>After the eighth turn, both leaders present. Each picks three slides from every card their party still holds, banked or carried, without seeing the other's. The slides then go up in turns, one side then the other.</p>
-    <p>A slide scores its quality times (2 + 3 × the people in your room who want that taste), times a little for your Charm. A slide of the same taste as the one the room just saw, from either side, scores nothing. Every enemy unit in the room boos each of your slides, and one of them heckles you: let it go for a few boos, or clap back for a big gain or a bigger loss. A rigged projector blanks your best slide unless somebody checked it.</p>
+  ['Ending and winning', `<p>After the eighth turn, both sides present. Each picks up to three slides from every card their party still holds, banked or carried, without seeing the other's, and chooses who stands up with each one: anyone of yours still on the floor. The presenter's Charm goes into the slide, an Engineer or IT makes a Gadget slide land harder, and whoever holds the second slide takes the heckle with their Grit. The slides then go up in turns, one side then the other.</p>
+    <p>A slide scores its quality times (2 + 3 × the people in your room who want that taste), times a little for the presenter's Charm. A slide of the same taste as the one the room just saw, from either side, scores nothing. Every enemy unit in the room boos each of your slides, and one of them heckles you: let it go for a few boos, or clap back for a big gain or a bigger loss. A rigged projector blanks your best slide unless somebody checked it.</p>
     <p>Higher claps minus boos takes the office. A tie goes to the bigger crowd.</p>`],
   ['What the numbers mean', `<ul><li><b>Followers</b> in the header: seats in your room at the talk, by taste.</li>
     <li><b>Your crowd and party want</b>: how many in your room want each taste. Fetch cards to match.</li>
@@ -1502,7 +1558,8 @@ const RULES = [
     <li>Argue in pairs. One unit softens, the next breaks, and the cards fall to whoever is standing there.</li>
     <li>A unit at 2 morale that just came back is bait, and the other side knows it.</li>
     <li>Spend the last two turns standing next to the undecided. All hands rewards bodies, not cards.</li>
-    <li>Consultants are three actions for a whole-match rule. The Keynote Coach alone is worth about nine claps.</li></ul>`],
+    <li>Consultants are three actions for a whole-match rule. The Keynote Coach alone is worth about nine claps.</li>
+    <li>Keep your Charm on the floor for the talk. A broken presenter cannot stand up, and the leader's Grit is not always the best answer to a heckle.</li></ul>`],
 ];
 const JOBS_TAB = () => `<p>Every unit has a job. The job sets the four stats, one taste of slide they want to hear, and one ability on a three-turn cooldown. Your own job also decides what your talk lands.</p>
   <table class="rc jobs-t"><thead><tr><th>Job</th><th>Charm</th><th>Guile</th><th>Hustle</th><th>Grit</th><th>Wants</th></tr></thead><tbody>

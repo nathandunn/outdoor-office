@@ -134,6 +134,11 @@ class Game {
     this.breaks = { 0: 0, 1: 0 };
     this.turn = 1; this.side = P; this.first = N; this.log = []; this.over = false; this.winner = NONE; this.how = '';
     for (let y = 0; y < A.H; y++) for (let x = 0; x < A.W; x++) if (DESKS[this.map[y][x]] !== undefined) this.stock[key(x, y)] = A.DESK_STOCK;
+    // What each supply closet holds is decided now and can be read from the door.
+    this.closets = {};
+    for (let y = 0; y < A.H; y++) for (let x = 0; x < A.W; x++) if (this.map[y][x] === 'C') {
+      this.closets[key(x, y)] = [0, 1].map(() => ({ taste: this.ri(4), q: this.r() < 0.35 ? 3 : 2, name: this.pick(GOLD) }));
+    }
   }
   r() { return this.rng(); }
   ri(n) { return Math.floor(this.rng() * n); }
@@ -221,6 +226,9 @@ class Game {
       this.neutrals.push({ id: this.nextId++, kind: 'consultant', cid: c.id, name: c.name, what: c.what, role: RO.STAFF, taste: this.ri(4), x, y, amt: 0, for: NONE, side: NONE });
     }
     for (const c of CONTRACTORS) this.addContractorNpc(c, LOBBY_SPOTS[spot++]);
+    // A coin for who opens turn 1. Openers alternate, so this also decides who closes the last turn before all hands.
+    this.first = this.r() < 0.5 ? P : N;
+    this.say(NONE, `${this.first === P ? 'You open' : 'They open'} the first turn; openers alternate, so ${this.first === P ? 'they' : 'you'} get the last word before all hands.`);
     this.startTurn(this.first);
   }
   addContractorNpc(c, at) {
@@ -335,7 +343,7 @@ class Game {
       if (DESKS[t] !== undefined && u.cards.length < A.CARRY && this.stock[key(x, y)] > 0) {
         out.push({ kind: 'desk', x, y, taste: DESKS[t], label: `Take a ${TASTE[DESKS[t]]} card`, sub: `${this.stock[key(x, y)]} left on this desk; ${this.demand(u.side)[DESKS[t]]} of yours want ${TASTE[DESKS[t]]}${DESKS[t] === 2 && this.gadgetHand(u) ? '; quality 2 in these hands' : ''}` });
       }
-      if (t === 'C' && this.raidable(u.side, x)) out.push({ kind: 'closet', x, y, label: 'Raid their supply closet', sub: 'two good slides, quality 2 or 3; first come, first served' });
+      if (t === 'C' && this.raidable(u.side, x)) out.push({ kind: 'closet', x, y, label: 'Raid their supply closet', sub: (this.closets[key(x, y)] || []).map(c => `${c.name} (${TASTE[c.taste]} q${c.q})`).join(' and ') });
       const n = this.neutralAt(x, y);
       if (n) {
         const amt = this.pitchAmt(u);
@@ -438,8 +446,8 @@ class Game {
       case 'desk': this.takeFromDesk(u, a.x, a.y); break;
       case 'closet': {
         this.map[a.y][a.x] = 'c';
-        const got = [];
-        for (let i = 0; i < 2; i++) { const c = { taste: this.ri(4), q: this.r() < 0.35 ? 3 : 2, name: this.pick(GOLD) }; got.push(c); }
+        const got = this.closets[key(a.x, a.y)] || [];
+        delete this.closets[key(a.x, a.y)];
         for (const c of got) { if (u.cards.length < A.CARRY) u.cards.push(c); else (this.loot[key(u.x, u.y)] ||= []).push(c); }
         this.say(u.side, `${u.name} raided a supply closet: ${got.map(c => `${c.name} (${TASTE[c.taste]}, q${c.q})`).join(', ')}.`);
         break;
@@ -735,14 +743,18 @@ class Game {
   }
   leader(side) { return this.units.find(u => u.side === side && u.leader); }
   fans(T, side, taste) { return T.sides[side].audience.filter(a => a.taste === taste).length; }
-  slideClaps(T, side, c) {
+  presenters(side) { const a = this.active(side).filter(u => u.kind === 'staff'); return a.length ? a : [this.leader(side)]; }
+  presenter(side, by) { return (by !== undefined && this.units.find(u => u.id === by && u.side === side)) || this.leader(side); }
+  // Whoever stands up with the slide brings their own Charm to it, and an Engineer or IT makes a Gadget land harder.
+  slideClaps(T, side, c, by) {
     if (c.taste < 0) return 0;
-    let v = c.q * (2 + 3 * this.fans(T, side, c.taste)) * (1 + 0.1 * this.leader(side).stats[0]);
+    const who = this.presenter(side, by === undefined ? c.by : by);
+    let v = c.q * (2 + 3 * this.fans(T, side, c.taste)) * (1 + 0.1 * who.stats[0]);
     if (c.taste === 0 && this.has(side, 'data')) v *= 1.5;
-    if (c.taste === 2 && this.gadgetHand(this.leader(side))) v += this.fans(T, side, 2);
+    if (c.taste === 2 && this.gadgetHand(who)) v += this.fans(T, side, 2);
     return Math.round(v) + (this.has(side, 'keynote') ? 3 : 0);
   }
-  // Best three, no two of a taste in a row where it can be helped.
+  // Best three, no two of a taste in a row where it can be helped, each with the best free presenter.
   aiPick(T, side) {
     const S = T.sides[side];
     const idx = S.hand.map((c, i) => i).sort((a, b) => this.slideClaps(T, side, S.hand[b]) - this.slideClaps(T, side, S.hand[a]));
@@ -752,16 +764,25 @@ class Game {
       const pick = idx.find(i => !out.includes(i) && S.hand[i].taste !== prev) ?? idx.find(i => !out.includes(i));
       out.push(pick);
     }
-    return out;
+    const free = this.presenters(side).slice();
+    return out.map(i => {
+      const c = S.hand[i];
+      let best = free[0] || this.leader(side), bv = -1;
+      for (const u of free) { const v = this.slideClaps(T, side, c, u.id); if (v > bv) { bv = v; best = u; } }
+      if (free.length > 1) free.splice(free.indexOf(best), 1);
+      return { i, by: best.id };
+    });
   }
-  chooseFor(T, side, idxs) {
+  // picks: [{i, by}] or plain indices (the leader presents).
+  chooseFor(T, side, picks) {
     const S = T.sides[side];
-    S.chosen = idxs.slice(0, A.SLIDES).map(i => S.hand[i]).filter(Boolean);
+    S.chosen = picks.slice(0, A.SLIDES).map(p => typeof p === 'number' ? { i: p, by: this.leader(side).id } : p)
+      .filter(p => S.hand[p.i]).map(p => ({ ...S.hand[p.i], by: p.by }));
     if (this.rigged[side] && S.chosen.length) {
       let bi = 0;
       for (let i = 0; i < S.chosen.length; i++) if (this.slideClaps(T, side, S.chosen[i]) > this.slideClaps(T, side, S.chosen[bi])) bi = i;
       S.blanked = S.chosen[bi];
-      S.chosen[bi] = { taste: -1, q: 0, name: A.DUD };
+      S.chosen[bi] = { taste: -1, q: 0, name: A.DUD, by: S.chosen[bi].by };
     }
   }
   slotsLeft(T) { return T.slot < A.SLIDES * 2; }
@@ -769,9 +790,10 @@ class Game {
     const side = T.order[T.slot % 2], i = Math.floor(T.slot / 2);
     const S = T.sides[side];
     T.slot++;
-    const who = side === P ? 'You' : 'They';
     const c = S.chosen[i];
-    if (!c) { T.lines.push(`${who} had no slide ${i + 1}.`); return; }
+    if (!c) { T.lines.push(`${side === P ? 'You' : 'They'} had no slide ${i + 1}.`); return; }
+    const pr = this.presenter(side, c.by);
+    const who = pr.leader ? (side === P ? 'You' : 'Your nemesis') : `${pr.name}${side === P ? '' : ' (theirs)'}`;
     const bored = T.last && c.taste >= 0 && T.last.taste === c.taste;
     const cl = bored ? 0 : this.slideClaps(T, side, c);
     const b = 2 * S.booers.length + (c.taste < 0 ? 4 : 0);
@@ -779,18 +801,19 @@ class Game {
     T.lines.push(c.taste < 0 ? `${who}: a blank slide. ${b} boos.`
       : `${who}: ${c.name} (${TASTE[c.taste]} q${c.q})${bored ? ', but the room just saw ' + TASTE[c.taste] + ': nothing' : `: ${cl} claps`}${b ? `, ${b} boos` : ''}.`);
     T.last = c;
-    if (i === 1 && S.booers.length && !S.heckled) T.pending = side;
+    if (i === 1 && S.booers.length && !S.heckled) { T.pending = side; S.heckledBy = pr.id; }
   }
-  heckleOdds(side) { return Math.min(0.9, 0.55 + 0.05 * this.leader(side).stats[3]); }
-  ignoreCost(side) { return Math.max(1, 5 - this.leader(side).stats[3]); }
+  heckleOdds(side, by) { return Math.min(0.9, 0.55 + 0.05 * this.presenter(side, by).stats[3]); }
+  ignoreCost(side, by) { return Math.max(1, 5 - this.presenter(side, by).stats[3]); }
   resolveHeckle(T, side, back) {
     const S = T.sides[side];
     S.heckled = true; T.pending = null;
-    const who = side === P ? 'You' : 'They';
+    const pr = this.presenter(side, S.heckledBy);
+    const who = pr.leader ? (side === P ? 'You' : 'Your nemesis') : pr.name;
     if (back) {
-      if (this.r() < this.heckleOdds(side)) { S.claps += 10; T.lines.push(`${who} clapped back and the room roared: +10.`); }
+      if (this.r() < this.heckleOdds(side, pr.id)) { S.claps += 10; T.lines.push(`${who} clapped back and the room roared: +10.`); }
       else { S.boos += 6; T.lines.push(`${who} clapped back and it fell flat: +6 boos.`); }
-    } else { const c = this.ignoreCost(side); S.boos += c; T.lines.push(`${who} let the heckle go: +${c} boos.`); }
+    } else { const c = this.ignoreCost(side, pr.id); S.boos += c; T.lines.push(`${who} let the heckle go: +${c} boos.`); }
   }
   finishTalk(T) {
     for (const side of [P, N]) { const S = T.sides[side]; S.score = S.claps - S.boos; this.say(side, `${side === P ? 'Your' : 'Their'} talk: ${S.claps} claps, ${S.boos} boos, ${S.score} all told.`); }
@@ -832,7 +855,7 @@ class Game {
         await H('talkUpdate', T);
         if (T.pending !== null) {
           const side = T.pending;
-          this.resolveHeckle(T, side, side === P ? await agent.chooseHeckle(T, this) : this.heckleOdds(N) >= 0.5);
+          this.resolveHeckle(T, side, side === P ? await agent.chooseHeckle(T, this) : this.heckleOdds(N, T.sides[N].heckledBy) >= 0.5);
           await H('talkUpdate', T);
         }
       }
