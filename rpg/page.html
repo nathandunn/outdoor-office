@@ -37,6 +37,12 @@
 .rules ul { margin: 4px 0 8px; padding-left: 20px; max-width: 68ch; }
 .rules li { margin: 3px 0; }
 .rules h3 { margin-top: 16px; }
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 10px; border-bottom: 2px solid var(--ink); }
+.tab { font-family: var(--hand); font-size: 22px; background: none; border: 2px solid var(--ink); border-bottom: 0; border-radius: 4px 4px 0 0; padding: 4px 14px; cursor: pointer; margin-bottom: -2px; }
+.tab.on { background: var(--ink); color: var(--card); }
+.jobs-t td, .jobs-t th { padding: 3px 6px; }
+.jobrow td { text-align: left; font-size: 13px; padding-bottom: 8px; }
+.pro { color: #2e7d32; font-weight: 700; } .con { color: var(--you); font-weight: 700; }
 .cons li.near { background: #fff6fb; margin-left: -4px; padding-left: 4px; border-radius: 3px; }
 .reach { color: var(--you); font-weight: 700; font-size: 12px; }
 .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid var(--ink); vertical-align: -1px; margin-right: 5px; }
@@ -383,7 +389,8 @@ function setupFlow() {
       <p>You lead a party through a small office for eight turns: arguing their people down, looting the desks between you and the closets behind them, winning the crowd over. Then three slides each decide it, unless you break their whole party first.</p>
       <div class="jobs">${PLAYABLE.map(r => `<button class="job" data-r="${r}"><b>${ROLE_NAME[r]}</b>
         <small>${ABILITY[r].name}: ${esc(ABILITY[r].what)}</small><small>Wants ${ROLE_TASTES[r].map(t => TASTE[t]).join(' or ')}</small>
-        <small>${ROLE_STATS[r].map((v, i) => `${STAT_NAME[i]} ${v}`).join(', ')}</small></button>`).join('')}</div>`,
+        <small>${ROLE_STATS[r].map((v, i) => `${STAT_NAME[i]} ${v}`).join(', ')}</small><small class="con">${esc(JOB_CON[r])}</small></button>`).join('')}</div>
+      <p class="who">Full pros and cons are under the ? once you are in.</p>`,
       el => el.querySelectorAll('.job').forEach(b => b.onclick = () => { cfg.role = +b.dataset.r; base = ROLE_STATS[cfg.role].slice(); cfg.stats = base.slice(); pageStats(); }));
     const pageStats = () => {
       const left = A.FREE_POINTS - cfg.stats.reduce((a, v, i) => a + v - base[i], 0);
@@ -502,14 +509,32 @@ const RULES = [
     <li>Spend the last two turns standing next to the undecided. All hands rewards bodies, not cards.</li>
     <li>Consultants are three actions for a whole-match rule. The Keynote Coach alone is worth about nine claps.</li></ul>`],
 ];
-function howToPlay() {
-  if (!$('#veil').hidden) return;
-  sheet(`<h2>How it plays</h2><div class="rules">${RULES.map(([h, b]) => `<h3>${h}</h3>${b}`).join('')}</div>
+const JOBS_TAB = () => `<p>Every unit has a job. The job sets the four stats, one taste of slide they want to hear, and one ability on a three-turn cooldown. Your own job also decides what your talk lands.</p>
+  <table class="rc jobs-t"><thead><tr><th>Job</th><th>Charm</th><th>Guile</th><th>Hustle</th><th>Grit</th><th>Wants</th></tr></thead><tbody>
+  ${PLAYABLE.map(r => `<tr><td><b>${ROLE_NAME[r]}</b></td>${ROLE_STATS[r].map(v => `<td>${v}</td>`).join('')}<td style="text-align:left">${ROLE_TASTES[r].map(t => TASTE_GLYPH[t] + ' ' + TASTE[t]).join(', ')}</td></tr>
+  <tr class="jobrow"><td colspan="6"><b>${ABILITY[r].name}</b>: ${esc(ABILITY[r].what)}.<br><span class="pro">For:</span> ${esc(JOB_PRO[r])}<br><span class="con">Against:</span> ${esc(JOB_CON[r])}</td></tr>`).join('')}</tbody></table>
+  <p class="who">Colleagues get one extra point in each of their job's two best stats. Contractors from the Lobby have no job and no ability.</p>`;
+const TASTES_TAB = () => `<p>Everyone in the office wants to hear one of four things. Your crowd's tastes decide which slides land at the talk: a slide scores its quality times (2 + 3 × the people in your room who want that taste).</p>
+  <table class="rc"><thead><tr><th>Taste</th><th>Who wants it</th><th>Where the cards are</th></tr></thead><tbody>
+  ${TASTE.map((t, i) => `<tr><td style="text-align:left"><b>${TASTE_GLYPH[i]} ${t}</b></td><td style="text-align:left">${PLAYABLE.filter(r => ROLE_TASTES[r].includes(i)).map(r => ROLE_NAME[r]).join(', ')}, and Staff</td><td style="text-align:left">${['the Data desks, top middle', 'the Story desks, bottom middle', 'the Gadget desk, centre; quality 2 when an Engineer or IT takes it; the Engineer can build one', 'the Snacks desk, centre'][i]}</td></tr>`).join('')}
+  </tbody></table>
+  <p>Desk cards are quality 1; the supply closets hold quality 2 and 3 slides of any taste. The panel beside the board totals what your room wants right now; the list of the undecided says what each of them wants, so you can pitch the ones who match the cards you hold, or fetch the cards to match the people you have.</p>
+  <p>Two cautions. A slide of the same taste as the one the room just saw, from either side, scores nothing, so three Data slides in a row score once. And your room is only your followers and your party: their people in the room boo, they do not want anything.</p>`;
+const HELP_TABS = [
+  ['Rules', () => RULES.filter(([h]) => h !== 'Notes on strategy').map(([h, b]) => `<h3>${h}</h3>${b}`).join('')],
+  ['Jobs', JOBS_TAB],
+  ['Tastes', TASTES_TAB],
+  ['Strategy', () => RULES.filter(([h]) => h === 'Notes on strategy').map(([, b]) => b).join('')],
+];
+function howToPlay(tab = 0) {
+  if (!$('#veil').hidden && !$('#sheet').querySelector('.tabs')) return;
+  sheet(`<h2>How it plays</h2><div class="tabs">${HELP_TABS.map(([t], i) => `<button class="tab ${i === tab ? 'on' : ''}" data-i="${i}">${t}</button>`).join('')}</div>
+    <div class="rules">${HELP_TABS[tab][1]()}</div>
     <div class="row"><button class="btn" id="ok">Back to the office</button></div>`,
-    el => el.querySelector('#ok').onclick = closeSheet);
+    el => { el.querySelector('#ok').onclick = closeSheet; el.querySelectorAll('.tab').forEach(b => b.onclick = () => howToPlay(+b.dataset.i)); });
 }
-$('#help').onclick = howToPlay;
-document.addEventListener('keydown', e => { if (e.key === '?' && $('#veil').hidden) howToPlay(); });
+$('#help').onclick = () => howToPlay(0);
+document.addEventListener('keydown', e => { if (e.key === '?' && $('#veil').hidden) howToPlay(0); });
 
 // --- wiring ---------------------------------------------------------------------
 const agent = {

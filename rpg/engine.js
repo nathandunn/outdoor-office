@@ -14,6 +14,27 @@ const ROLE_TASTES = [[0, 1], [0, 2], [2], [1], [1, 2], [3, 2], [0], [3], [0, 1, 
 // charm, guile, hustle, grit
 const ROLE_STATS = [[2, 1, 0, 1], [0, 1, 1, 2], [0, 2, 1, 1], [2, 0, 0, 2], [2, 2, 0, 0], [1, 1, 2, 0], [0, 2, 0, 2], [1, 0, 2, 1]];
 const PLAYABLE = [0, 1, 2, 3, 4, 5, 6, 7];
+// What each job is for, and what it costs you. Stats and the ability do the rest.
+const JOB_PRO = [
+  'Charm and Grit both: argues well and takes it. Rally moves the whole party.',
+  'Knows gadgets: Gadget cards they take are quality 2, and as leader, Gadget slides land an extra clap per fan. Prototype makes a slide from nothing.',
+  'Knows gadgets too, same as the Engineer. Jam knocks a card out of an enemy hand from four tiles away.',
+  'Tough, and the only healer: Counsel puts six morale back.',
+  'Rumour hits everyone within two tiles at once; the best crowd-control on the floor.',
+  'Charm plus Hustle: fast, and Pitch wins the undecided from three tiles away.',
+  'Grit and Guile: hard to break, good at picking pockets. Injunction pins an enemy for a turn.',
+  'Fastest legs in the office, and Fetch takes a card without walking to the desk.',
+];
+const JOB_CON = [
+  'Slow. No Hustle at all.',
+  'No Charm: loses arguments they start.',
+  'No Charm either, and little morale.',
+  'Slow, and no Guile: never a crit, poor pickpocket.',
+  'No Grit: the lowest morale of any job, and the easiest to break.',
+  'No Grit: breaks fast if caught.',
+  'Slow, and no Charm to argue with.',
+  'Weak and easily broken, and everything they carry drops when they are.',
+];
 const STAT_NAME = ['Charm', 'Guile', 'Hustle', 'Grit'];
 const STAT_WHAT = ['hits harder in an argument, lands slides', 'crits, pickpocketing', '+1 move every two points', 'more morale, takes less'];
 const ABILITY = [
@@ -312,7 +333,7 @@ class Game {
       }
       const t = this.tile(x, y);
       if (DESKS[t] !== undefined && u.cards.length < A.CARRY && this.stock[key(x, y)] > 0) {
-        out.push({ kind: 'desk', x, y, taste: DESKS[t], label: `Take a ${TASTE[DESKS[t]]} card`, sub: `${this.stock[key(x, y)]} left on this desk; ${this.demand(u.side)[DESKS[t]]} of yours want ${TASTE[DESKS[t]]}` });
+        out.push({ kind: 'desk', x, y, taste: DESKS[t], label: `Take a ${TASTE[DESKS[t]]} card`, sub: `${this.stock[key(x, y)]} left on this desk; ${this.demand(u.side)[DESKS[t]]} of yours want ${TASTE[DESKS[t]]}${DESKS[t] === 2 && this.gadgetHand(u) ? '; quality 2 in these hands' : ''}` });
       }
       if (t === 'C' && this.raidable(u.side, x)) out.push({ kind: 'closet', x, y, label: 'Raid their supply closet', sub: 'two good slides, quality 2 or 3; first come, first served' });
       const n = this.neutralAt(x, y);
@@ -436,10 +457,11 @@ class Game {
     this.checkRout();
   }
   lobby() { for (let y = 0; y < A.H; y++) for (let x = 0; x < A.W; x++) if (this.map[y][x] === 'L') return [x, y]; return [15, 9]; }
+  gadgetHand(u) { return u.job === RO.ENG || u.job === RO.IT; }
   takeFromDesk(u, x, y) {
     const t = DESKS[this.tile(x, y)];
     this.stock[key(x, y)]--;
-    const c = { taste: t, q: 1, name: this.pick(PROPS[t]) };
+    const c = { taste: t, q: t === 2 && this.gadgetHand(u) ? 2 : 1, name: this.pick(PROPS[t]) };
     u.cards.push(c);
     this.say(u.side, `${u.name} took ${c.name}.`);
   }
@@ -617,7 +639,7 @@ class Game {
         return d * 1.7 + (t.leader ? 1 : 0) - 0.5 * c + (d >= t.morale - 2 ? 1.5 : 0);
       }
       case 'pickpocket': return this.pickChance(u) * 3 * (u.cards.length < A.CARRY ? 1 : 0);
-      case 'desk': return 2 + 0.3 * this.demand(u.side)[a.taste];
+      case 'desk': return 2 + 0.3 * this.demand(u.side)[a.taste] + (a.taste === 2 && this.gadgetHand(u) ? 1 : 0);
       case 'closet': return 6;
       case 'pitch':
         if (t.kind === 'contractor') return this.turn <= A.TURNS - 2 ? 3.6 : 0;
@@ -719,6 +741,7 @@ class Game {
     if (c.taste < 0) return 0;
     let v = c.q * (2 + 3 * this.fans(T, side, c.taste)) * (1 + 0.1 * this.leader(side).stats[0]);
     if (c.taste === 0 && this.has(side, 'data')) v *= 1.5;
+    if (c.taste === 2 && this.gadgetHand(this.leader(side))) v += this.fans(T, side, 2);
     return Math.round(v) + (this.has(side, 'keynote') ? 3 : 0);
   }
   // Best three, no two of a taste in a row where it can be helped.

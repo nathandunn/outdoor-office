@@ -179,6 +179,12 @@ table.rc { border-collapse: collapse; width: 100%; font-size: 15px; margin-top: 
 .rules ul { margin: 4px 0 8px; padding-left: 20px; max-width: 68ch; }
 .rules li { margin: 3px 0; }
 .rules h3 { margin-top: 16px; }
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 10px; border-bottom: 2px solid var(--ink); }
+.tab { font-family: var(--hand); font-size: 22px; background: none; border: 2px solid var(--ink); border-bottom: 0; border-radius: 4px 4px 0 0; padding: 4px 14px; cursor: pointer; margin-bottom: -2px; }
+.tab.on { background: var(--ink); color: var(--card); }
+.jobs-t td, .jobs-t th { padding: 3px 6px; }
+.jobrow td { text-align: left; font-size: 13px; padding-bottom: 8px; }
+.pro { color: #2e7d32; font-weight: 700; } .con { color: var(--you); font-weight: 700; }
 .cons li.near { background: #fff6fb; margin-left: -4px; padding-left: 4px; border-radius: 3px; }
 .reach { color: var(--you); font-weight: 700; font-size: 12px; }
 .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid var(--ink); vertical-align: -1px; margin-right: 5px; }
@@ -226,6 +232,27 @@ const ROLE_TASTES = [[0, 1], [0, 2], [2], [1], [1, 2], [3, 2], [0], [3], [0, 1, 
 // charm, guile, hustle, grit
 const ROLE_STATS = [[2, 1, 0, 1], [0, 1, 1, 2], [0, 2, 1, 1], [2, 0, 0, 2], [2, 2, 0, 0], [1, 1, 2, 0], [0, 2, 0, 2], [1, 0, 2, 1]];
 const PLAYABLE = [0, 1, 2, 3, 4, 5, 6, 7];
+// What each job is for, and what it costs you. Stats and the ability do the rest.
+const JOB_PRO = [
+  'Charm and Grit both: argues well and takes it. Rally moves the whole party.',
+  'Knows gadgets: Gadget cards they take are quality 2, and as leader, Gadget slides land an extra clap per fan. Prototype makes a slide from nothing.',
+  'Knows gadgets too, same as the Engineer. Jam knocks a card out of an enemy hand from four tiles away.',
+  'Tough, and the only healer: Counsel puts six morale back.',
+  'Rumour hits everyone within two tiles at once; the best crowd-control on the floor.',
+  'Charm plus Hustle: fast, and Pitch wins the undecided from three tiles away.',
+  'Grit and Guile: hard to break, good at picking pockets. Injunction pins an enemy for a turn.',
+  'Fastest legs in the office, and Fetch takes a card without walking to the desk.',
+];
+const JOB_CON = [
+  'Slow. No Hustle at all.',
+  'No Charm: loses arguments they start.',
+  'No Charm either, and little morale.',
+  'Slow, and no Guile: never a crit, poor pickpocket.',
+  'No Grit: the lowest morale of any job, and the easiest to break.',
+  'No Grit: breaks fast if caught.',
+  'Slow, and no Charm to argue with.',
+  'Weak and easily broken, and everything they carry drops when they are.',
+];
 const STAT_NAME = ['Charm', 'Guile', 'Hustle', 'Grit'];
 const STAT_WHAT = ['hits harder in an argument, lands slides', 'crits, pickpocketing', '+1 move every two points', 'more morale, takes less'];
 const ABILITY = [
@@ -524,7 +551,7 @@ class Game {
       }
       const t = this.tile(x, y);
       if (DESKS[t] !== undefined && u.cards.length < A.CARRY && this.stock[key(x, y)] > 0) {
-        out.push({ kind: 'desk', x, y, taste: DESKS[t], label: `Take a ${TASTE[DESKS[t]]} card`, sub: `${this.stock[key(x, y)]} left on this desk; ${this.demand(u.side)[DESKS[t]]} of yours want ${TASTE[DESKS[t]]}` });
+        out.push({ kind: 'desk', x, y, taste: DESKS[t], label: `Take a ${TASTE[DESKS[t]]} card`, sub: `${this.stock[key(x, y)]} left on this desk; ${this.demand(u.side)[DESKS[t]]} of yours want ${TASTE[DESKS[t]]}${DESKS[t] === 2 && this.gadgetHand(u) ? '; quality 2 in these hands' : ''}` });
       }
       if (t === 'C' && this.raidable(u.side, x)) out.push({ kind: 'closet', x, y, label: 'Raid their supply closet', sub: 'two good slides, quality 2 or 3; first come, first served' });
       const n = this.neutralAt(x, y);
@@ -648,10 +675,11 @@ class Game {
     this.checkRout();
   }
   lobby() { for (let y = 0; y < A.H; y++) for (let x = 0; x < A.W; x++) if (this.map[y][x] === 'L') return [x, y]; return [15, 9]; }
+  gadgetHand(u) { return u.job === RO.ENG || u.job === RO.IT; }
   takeFromDesk(u, x, y) {
     const t = DESKS[this.tile(x, y)];
     this.stock[key(x, y)]--;
-    const c = { taste: t, q: 1, name: this.pick(PROPS[t]) };
+    const c = { taste: t, q: t === 2 && this.gadgetHand(u) ? 2 : 1, name: this.pick(PROPS[t]) };
     u.cards.push(c);
     this.say(u.side, `${u.name} took ${c.name}.`);
   }
@@ -829,7 +857,7 @@ class Game {
         return d * 1.7 + (t.leader ? 1 : 0) - 0.5 * c + (d >= t.morale - 2 ? 1.5 : 0);
       }
       case 'pickpocket': return this.pickChance(u) * 3 * (u.cards.length < A.CARRY ? 1 : 0);
-      case 'desk': return 2 + 0.3 * this.demand(u.side)[a.taste];
+      case 'desk': return 2 + 0.3 * this.demand(u.side)[a.taste] + (a.taste === 2 && this.gadgetHand(u) ? 1 : 0);
       case 'closet': return 6;
       case 'pitch':
         if (t.kind === 'contractor') return this.turn <= A.TURNS - 2 ? 3.6 : 0;
@@ -931,6 +959,7 @@ class Game {
     if (c.taste < 0) return 0;
     let v = c.q * (2 + 3 * this.fans(T, side, c.taste)) * (1 + 0.1 * this.leader(side).stats[0]);
     if (c.taste === 0 && this.has(side, 'data')) v *= 1.5;
+    if (c.taste === 2 && this.gadgetHand(this.leader(side))) v += this.fans(T, side, 2);
     return Math.round(v) + (this.has(side, 'keynote') ? 3 : 0);
   }
   // Best three, no two of a taste in a row where it can be helped.
@@ -1355,7 +1384,8 @@ function setupFlow() {
       <p>You lead a party through a small office for eight turns: arguing their people down, looting the desks between you and the closets behind them, winning the crowd over. Then three slides each decide it, unless you break their whole party first.</p>
       <div class="jobs">${PLAYABLE.map(r => `<button class="job" data-r="${r}"><b>${ROLE_NAME[r]}</b>
         <small>${ABILITY[r].name}: ${esc(ABILITY[r].what)}</small><small>Wants ${ROLE_TASTES[r].map(t => TASTE[t]).join(' or ')}</small>
-        <small>${ROLE_STATS[r].map((v, i) => `${STAT_NAME[i]} ${v}`).join(', ')}</small></button>`).join('')}</div>`,
+        <small>${ROLE_STATS[r].map((v, i) => `${STAT_NAME[i]} ${v}`).join(', ')}</small><small class="con">${esc(JOB_CON[r])}</small></button>`).join('')}</div>
+      <p class="who">Full pros and cons are under the ? once you are in.</p>`,
       el => el.querySelectorAll('.job').forEach(b => b.onclick = () => { cfg.role = +b.dataset.r; base = ROLE_STATS[cfg.role].slice(); cfg.stats = base.slice(); pageStats(); }));
     const pageStats = () => {
       const left = A.FREE_POINTS - cfg.stats.reduce((a, v, i) => a + v - base[i], 0);
@@ -1474,14 +1504,32 @@ const RULES = [
     <li>Spend the last two turns standing next to the undecided. All hands rewards bodies, not cards.</li>
     <li>Consultants are three actions for a whole-match rule. The Keynote Coach alone is worth about nine claps.</li></ul>`],
 ];
-function howToPlay() {
-  if (!$('#veil').hidden) return;
-  sheet(`<h2>How it plays</h2><div class="rules">${RULES.map(([h, b]) => `<h3>${h}</h3>${b}`).join('')}</div>
+const JOBS_TAB = () => `<p>Every unit has a job. The job sets the four stats, one taste of slide they want to hear, and one ability on a three-turn cooldown. Your own job also decides what your talk lands.</p>
+  <table class="rc jobs-t"><thead><tr><th>Job</th><th>Charm</th><th>Guile</th><th>Hustle</th><th>Grit</th><th>Wants</th></tr></thead><tbody>
+  ${PLAYABLE.map(r => `<tr><td><b>${ROLE_NAME[r]}</b></td>${ROLE_STATS[r].map(v => `<td>${v}</td>`).join('')}<td style="text-align:left">${ROLE_TASTES[r].map(t => TASTE_GLYPH[t] + ' ' + TASTE[t]).join(', ')}</td></tr>
+  <tr class="jobrow"><td colspan="6"><b>${ABILITY[r].name}</b>: ${esc(ABILITY[r].what)}.<br><span class="pro">For:</span> ${esc(JOB_PRO[r])}<br><span class="con">Against:</span> ${esc(JOB_CON[r])}</td></tr>`).join('')}</tbody></table>
+  <p class="who">Colleagues get one extra point in each of their job's two best stats. Contractors from the Lobby have no job and no ability.</p>`;
+const TASTES_TAB = () => `<p>Everyone in the office wants to hear one of four things. Your crowd's tastes decide which slides land at the talk: a slide scores its quality times (2 + 3 × the people in your room who want that taste).</p>
+  <table class="rc"><thead><tr><th>Taste</th><th>Who wants it</th><th>Where the cards are</th></tr></thead><tbody>
+  ${TASTE.map((t, i) => `<tr><td style="text-align:left"><b>${TASTE_GLYPH[i]} ${t}</b></td><td style="text-align:left">${PLAYABLE.filter(r => ROLE_TASTES[r].includes(i)).map(r => ROLE_NAME[r]).join(', ')}, and Staff</td><td style="text-align:left">${['the Data desks, top middle', 'the Story desks, bottom middle', 'the Gadget desk, centre; quality 2 when an Engineer or IT takes it; the Engineer can build one', 'the Snacks desk, centre'][i]}</td></tr>`).join('')}
+  </tbody></table>
+  <p>Desk cards are quality 1; the supply closets hold quality 2 and 3 slides of any taste. The panel beside the board totals what your room wants right now; the list of the undecided says what each of them wants, so you can pitch the ones who match the cards you hold, or fetch the cards to match the people you have.</p>
+  <p>Two cautions. A slide of the same taste as the one the room just saw, from either side, scores nothing, so three Data slides in a row score once. And your room is only your followers and your party: their people in the room boo, they do not want anything.</p>`;
+const HELP_TABS = [
+  ['Rules', () => RULES.filter(([h]) => h !== 'Notes on strategy').map(([h, b]) => `<h3>${h}</h3>${b}`).join('')],
+  ['Jobs', JOBS_TAB],
+  ['Tastes', TASTES_TAB],
+  ['Strategy', () => RULES.filter(([h]) => h === 'Notes on strategy').map(([, b]) => b).join('')],
+];
+function howToPlay(tab = 0) {
+  if (!$('#veil').hidden && !$('#sheet').querySelector('.tabs')) return;
+  sheet(`<h2>How it plays</h2><div class="tabs">${HELP_TABS.map(([t], i) => `<button class="tab ${i === tab ? 'on' : ''}" data-i="${i}">${t}</button>`).join('')}</div>
+    <div class="rules">${HELP_TABS[tab][1]()}</div>
     <div class="row"><button class="btn" id="ok">Back to the office</button></div>`,
-    el => el.querySelector('#ok').onclick = closeSheet);
+    el => { el.querySelector('#ok').onclick = closeSheet; el.querySelectorAll('.tab').forEach(b => b.onclick = () => howToPlay(+b.dataset.i)); });
 }
-$('#help').onclick = howToPlay;
-document.addEventListener('keydown', e => { if (e.key === '?' && $('#veil').hidden) howToPlay(); });
+$('#help').onclick = () => howToPlay(0);
+document.addEventListener('keydown', e => { if (e.key === '?' && $('#veil').hidden) howToPlay(0); });
 
 // --- wiring ---------------------------------------------------------------------
 const agent = {
