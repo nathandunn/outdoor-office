@@ -1,0 +1,1282 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The Outdoor Office</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --blotter: #2f4a3a;
+  --blotter-2: #27402f;
+  --pad: #fbf1a9;
+  --pad-deep: #f3e48a;
+  --rule: #9cc3d9;
+  --margin: #e0736f;
+  --gum: #6b1f24;
+  --ink: #1f2440;
+  --ink-soft: rgba(31, 36, 64, .62);
+  --card: #fffdf6;
+  --you: #b8322a;
+  --them: #2a5db0;
+  --hi: #ff9fd2;
+  --hand: "Caveat", "Segoe Print", "Bradley Hand", cursive;
+  --body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --blotter: #1b2a21; --blotter-2: #16241c; }
+}
+:root[data-theme="dark"] { --blotter: #1b2a21; --blotter-2: #16241c; }
+:root { box-sizing: border-box; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+*, *::before, *::after { box-sizing: inherit; }
+body {
+  margin: 0; min-height: 100vh; font-family: var(--body); color: var(--ink); font-size: 15px; line-height: 1.45;
+  background: radial-gradient(ellipse at 30% 20%, var(--blotter) 0%, var(--blotter-2) 70%) fixed;
+}
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--hi); outline-offset: 2px; }
+
+.table { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 22px; padding: 22px; max-width: 1480px; margin: 0 auto; align-items: start; }
+@media (max-width: 1000px) { .table { grid-template-columns: 1fr; padding: 12px; gap: 14px; } }
+
+/* The legal pad */
+.pad { background: var(--pad); border-radius: 3px 3px 6px 6px; box-shadow: 0 2px 0 var(--pad-deep), 0 4px 0 #e9d97c, 0 18px 40px rgba(0,0,0,.35); overflow: hidden; }
+.gum { background: var(--gum); color: #f6e9d8; display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; padding: 10px 22px 8px; }
+.gum h1 { font-family: var(--hand); font-weight: 700; font-size: 38px; line-height: 1; margin: 0; letter-spacing: .5px; }
+.gum .where { font-size: 14px; opacity: .85; }
+.score { margin-left: auto; font-family: var(--hand); font-size: 30px; line-height: 1; display: flex; gap: 16px; align-items: baseline; }
+.score .y { color: #ffb4a6; } .score .t { color: #b6cff5; }
+.score small { font-family: var(--body); font-size: 12px; opacity: .8; }
+#board { display: block; width: 100%; height: auto; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 4px 22px 14px 70px; font-size: 13px; color: var(--ink-soft); }
+.legend svg { vertical-align: -4px; margin-right: 4px; }
+
+svg .hand { font-family: var(--hand); }
+.room { cursor: pointer; }
+.room:focus { outline: none; }
+.room:focus-visible .frame { stroke: var(--hi); stroke-width: 5; }
+
+/* Right-hand column: index cards */
+.col { display: flex; flex-direction: column; gap: 16px; }
+.idx { background: var(--card); border-radius: 3px; box-shadow: 0 10px 24px rgba(0,0,0,.28); position: relative;
+  background-image: linear-gradient(var(--card) 0 34px, transparent 34px), repeating-linear-gradient(transparent 0 23px, rgba(156,195,217,.55) 23px 24px);
+  padding: 8px 16px 14px; }
+.idx::before { content: ""; position: absolute; left: 0; right: 0; top: 34px; border-top: 1.5px solid var(--margin); }
+.idx h2 { font-family: var(--hand); font-size: 28px; line-height: 26px; margin: 0 0 12px; font-weight: 700; }
+.status p { margin: 0 0 6px; }
+.status .turn { font-family: var(--hand); font-size: 24px; line-height: 1; margin-bottom: 8px; }
+.turn.you { color: var(--you); } .turn.them { color: var(--them); }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 2px 0 8px; }
+.chip { border: 1.5px solid var(--ink); border-radius: 999px; padding: 0 9px; font-size: 13px; background: #fff; }
+.chip.dud { border-style: dashed; color: var(--ink-soft); }
+.wants { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 4px 0 8px; text-align: center; }
+.wants div { border: 1.5px solid var(--ink); border-radius: 3px; padding: 2px 0; background: #fff; }
+.wants b { font-family: var(--hand); font-size: 24px; display: block; line-height: 1; }
+.wants span { font-size: 12px; }
+.flags { color: var(--you); font-weight: 700; font-size: 13px; }
+.who { font-size: 13px; color: var(--ink-soft); }
+.who b { color: var(--ink); }
+
+.moves .filter { font-size: 13px; margin: -4px 0 8px; color: var(--ink-soft); }
+.moves .filter button { background: none; border: 0; text-decoration: underline; cursor: pointer; padding: 0; }
+.cards { display: flex; flex-direction: column; gap: 8px; max-height: 58vh; overflow: auto; padding: 2px 4px 6px 2px; }
+@media (max-width: 1000px) { .cards { max-height: none; } }
+@media (max-width: 600px) {
+  .gum { padding: 8px 12px 6px; gap: 4px 12px; } .gum h1 { font-size: 30px; } .score { font-size: 24px; margin-left: 0; }
+  .legend { padding: 2px 12px 10px; font-size: 12px; gap: 2px 12px; }
+  .sheet { padding: 16px; } .sheet h2 { font-size: 32px; }
+}
+.mv { text-align: left; background: #fff; border: 2px solid var(--ink); border-radius: 4px; padding: 6px 10px 7px; cursor: pointer; display: grid; grid-template-columns: 1fr auto; gap: 0 10px; }
+.mv:hover:not(:disabled), .mv.hot { background: #fff6fb; box-shadow: 4px 4px 0 var(--hi); }
+.mv .l { font-family: var(--hand); font-size: 24px; line-height: 1.05; font-weight: 700; }
+.mv .s { grid-column: 1 / -1; font-size: 13px; color: var(--ink-soft); }
+.mv .st { font-family: var(--hand); font-size: 20px; color: var(--you); align-self: center; }
+.mv.trick .l::after { content: " (sabotage)"; font-family: var(--body); font-size: 12px; font-weight: 400; color: var(--you); }
+.mv:disabled { cursor: default; border-style: dashed; border-color: var(--ink-soft); background: transparent; }
+.mv:disabled .l { text-decoration: line-through; text-decoration-thickness: 2px; color: var(--ink-soft); }
+.waiting { font-family: var(--hand); font-size: 22px; color: var(--ink-soft); padding: 6px 0; }
+
+.minutes ol { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow: auto; font-size: 13px; }
+.minutes li { padding: 2px 0 2px 10px; border-left: 3px solid transparent; }
+.minutes li.s0 { border-color: var(--you); } .minutes li.s1 { border-color: var(--them); }
+.minutes li.new { background: #fff6fb; }
+.minutes details { margin-top: 10px; font-size: 13px; }
+.minutes summary { cursor: pointer; font-family: var(--hand); font-size: 22px; }
+.minutes details p { margin: 6px 0; }
+
+/* Modal: a sheet slid across the table */
+.veil { position: fixed; inset: 0; background: rgba(15, 25, 18, .55); display: grid; place-items: center; padding: 18px; z-index: 10; overflow: auto; }
+.veil[hidden] { display: none; }
+.sheet { background: var(--card); max-width: 760px; width: 100%; border-radius: 4px; box-shadow: 0 24px 60px rgba(0,0,0,.45); padding: 20px 26px 22px; position: relative; }
+.sheet h2 { font-family: var(--hand); font-size: 40px; line-height: 1; margin: 0 0 10px; }
+.sheet h3 { font-family: var(--hand); font-size: 26px; margin: 14px 0 6px; }
+.sheet p { margin: 0 0 8px; max-width: 68ch; }
+.sheet .row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.btn { background: var(--ink); color: var(--card); border: 0; border-radius: 4px; padding: 9px 18px; font-family: var(--hand); font-size: 24px; line-height: 1; cursor: pointer; }
+.btn.alt { background: #fff; color: var(--ink); border: 2px solid var(--ink); }
+.btn:disabled { opacity: .4; cursor: default; }
+.jobs { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 10px; }
+.job { text-align: left; background: #fff; border: 2px solid var(--ink); border-radius: 4px; padding: 8px 10px; cursor: pointer; }
+.job:hover { box-shadow: 4px 4px 0 var(--hi); }
+.job b { font-family: var(--hand); font-size: 26px; display: block; line-height: 1; }
+.job small { display: block; color: var(--ink-soft); font-size: 12px; margin-top: 3px; }
+.stat { display: grid; grid-template-columns: 90px 1fr auto 34px auto; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(156,195,217,.6); }
+.stat b { font-family: var(--hand); font-size: 26px; }
+.stat .v { font-family: var(--hand); font-size: 28px; text-align: center; }
+.stat small { color: var(--ink-soft); }
+.pm { width: 34px; height: 34px; border: 2px solid var(--ink); background: #fff; border-radius: 4px; font-size: 20px; cursor: pointer; }
+.pm:disabled { opacity: .3; cursor: default; }
+
+.slide { text-align: left; background: #fff; border: 2px solid var(--ink); border-radius: 4px; padding: 8px 12px; cursor: pointer; min-width: 200px; flex: 1 1 200px; }
+.slide:hover { box-shadow: 4px 4px 0 var(--hi); }
+.slide b { font-family: var(--hand); font-size: 24px; display: block; line-height: 1.05; }
+.slide small { color: var(--ink-soft); }
+.meter { display: flex; height: 20px; border: 2px solid var(--ink); border-radius: 3px; overflow: hidden; margin: 8px 0 4px; background: #fff; }
+.meter .c { background: var(--you); } .meter .b { background: var(--ink); }
+.meter.them .c { background: var(--them); }
+.tally { font-family: var(--hand); font-size: 24px; }
+.lines { margin: 8px 0 0; padding-left: 20px; font-size: 14px; }
+.heckle { font-family: var(--hand); font-size: 30px; line-height: 1.1; margin: 12px 0 0; color: var(--you); }
+table.rc { border-collapse: collapse; width: 100%; font-size: 15px; margin-top: 6px; }
+.rc th, .rc td { padding: 4px 8px; border-bottom: 1px solid rgba(156,195,217,.8); text-align: right; }
+.rc th:first-child, .rc td:first-child { text-align: left; }
+.rc thead th { font-family: var(--hand); font-size: 22px; font-weight: 700; }
+.banner { position: fixed; left: 50%; top: 22%; transform: translate(-50%, -50%) rotate(-3deg); background: var(--gum); color: #f6e9d8;
+  font-family: var(--hand); font-size: 54px; padding: 6px 30px; border-radius: 4px; box-shadow: 0 18px 40px rgba(0,0,0,.4); z-index: 20; pointer-events: none;
+  opacity: 0; transition: opacity .25s; }
+.banner.on { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .banner { transition: none; } }
+</style>
+</head>
+<body>
+<div class="table">
+  <section class="pad" aria-label="The board">
+    <header class="gum">
+      <h1>The Outdoor Office</h1>
+      <span class="where" id="where"></span>
+      <div class="score" id="score"></div>
+    </header>
+    <svg id="board" viewBox="0 0 1000 720" role="img" aria-label="Floor plan of the office: rooms joined by corridors"></svg>
+    <div class="legend" id="legend"></div>
+  </section>
+  <aside class="col">
+    <div class="idx status" id="status"></div>
+    <div class="idx moves"><h2 id="movesTitle">Your move</h2><div id="filter" class="filter"></div><div class="cards" id="cards"></div></div>
+    <div class="idx minutes">
+      <h2>Minutes</h2>
+      <ol id="log" aria-live="polite"></ol>
+      <details>
+        <summary>How it plays</summary>
+        <p>Three rounds. Each round you and your nemesis take turns, four moves each, then both of you present at the Rock. Whoever ends with the most people who would clap for them wins; points break ties.</p>
+        <p>A move is: walk up to your steps along the corridors, then act in that room. The room the other side stands in can't be entered or walked through.</p>
+        <p>Desks give you a card of their taste and make nearby people curious; the curious drift to the Stream, where you close them. Every card is either a slide at your talk or the price of buying one of their people who wants it.</p>
+        <p>The side that's behind moves second, so it gets the last word in a round.</p>
+      </details>
+    </div>
+  </aside>
+</div>
+<div class="veil" id="veil" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+<div class="banner" id="banner" aria-hidden="true"></div>
+
+<script>
+// ==ENGINE== pure rules, no DOM. Same file is inlined into the page and run headless by sim.js.
+const TASTE = ['Data', 'Story', 'Gadget', 'Snacks'];
+const TASTE_GLYPH = ['#', '¶', '⚙', '☕'];
+const PROPS = [
+  ['the churn chart', 'the Q3 numbers', 'a heat map', 'the survey results'],
+  ['a customer story', 'the origin myth', 'a war story', 'the founder quote'],
+  ['the prototype', 'a live demo', 'a shiny widget', 'the headset'],
+  ['a box of donuts', 'the cheese plate', 'cold brew', 'a pizza'],
+];
+const RO = { CEO: 0, ENG: 1, IT: 2, HR: 3, MKT: 4, SALES: 5, LEGAL: 6, INTERN: 7, STAFF: 8 };
+const ROLE_NAME = ['CEO', 'Engineer', 'IT', 'HR', 'Marketing', 'Sales', 'Legal', 'Intern', 'Staff'];
+const ROLE_TASTES = [[0, 1], [0, 2], [2], [1], [1, 2], [3, 2], [0], [3], [0, 1, 2, 3]];
+// charm, guile, hustle, grit
+const ROLE_STATS = [[2, 1, 0, 1], [0, 1, 1, 2], [0, 2, 1, 1], [2, 0, 0, 2], [2, 2, 0, 0], [1, 1, 2, 0], [0, 2, 0, 2], [1, 0, 2, 1]];
+const ROLE_RULE = [
+  'one more seat at your talks',
+  'Data and Gadget slides land an extra clap per fan',
+  'your projector cannot be rigged',
+  'their bullies are turned away at the door',
+  'your rumours cool twice as hard',
+  'buy from a step further; the stream closes three',
+  'your cards cannot be pinched',
+  'desks warm one more; interns take any card',
+];
+const PLAYABLE = [0, 1, 2, 3, 4, 5, 6, 7];
+const STAT_NAME = ['Charm', 'Guile', 'Hustle', 'Grit'];
+const STAT_WHAT = ['+12% claps a point', 'rumours cool harder, tricks worth more', '+1 step every two points', 'shrugs off 4 boos a point'];
+const K = { NEUTRAL: 0, FOLLOWER: 1, WAGE: 2, INFLUENCER: 3, LOVER: 4, HATER: 5, BULLY: 6 };
+const KIND_NAME = ['neutral', 'follower', 'wage slave', 'influencer', 'lover', 'hater', 'bully'];
+const P = 0, N = 1, NONE = -1;
+const A = {
+  ROUNDS: 3, MOVES: 4, SLIDES: 3, WARM_COUNT: 3, WARM_AMOUNT: 1.0, CURIOUS_AT: 2.0, CUR_MAX: 3.0,
+  STREAM_CLOSE: 2, RUMOUR_CHILL: 1.0, BULLY_FROM: 2, UNDERDOG: 1, FREE_POINTS: 4, STAT_MAX: 5,
+  NEUTRALS: 12, WARM_RANGE: 2, DUD: 'a blank slide',
+};
+const claps = k => k === K.FOLLOWER || k === K.INFLUENCER || k === K.LOVER;
+const flippable = k => k === K.FOLLOWER || k === K.INFLUENCER;
+const booKind = k => k === K.HATER || k === K.BULLY;
+const hecklesFor = r => [1, 2, 2][r - 1] || 2;
+const perHeads = r => (r >= 3 ? 2 : 3);
+const NAMES = ['Ada', 'Bram', 'Cleo', 'Dev', 'Esme', 'Finn', 'Gus', 'Hana', 'Ines', 'Jo', 'Kit', 'Lars', 'Mina', 'Ned',
+  'Opal', 'Pip', 'Quinn', 'Rosa', 'Sol', 'Tam', 'Uma', 'Vic', 'Wren', 'Xavi', 'Yara', 'Zed', 'Bea', 'Cal', 'Dot',
+  'Eli', 'Flo', 'Hal', 'Ivy', 'Jem', 'Lou', 'Max', 'Nia', 'Ozzy', 'Pru', 'Rex', 'Sid', 'Tess', 'Val', 'Wes'];
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// --- the board: rooms and corridors ------------------------------------------
+const ROOMS = {
+  'desk:0': { name: 'Data desk', short: 'Data desk', plan: [0.13, 0.36], taste: 0 },
+  'desk:1': { name: 'Story desk', short: 'Story desk', plan: [0.34, 0.36], taste: 1 },
+  'desk:2': { name: 'Gadget desk', short: 'Gadget desk', plan: [0.34, 0.62], taste: 2 },
+  'desk:3': { name: 'Snacks desk', short: 'Snacks desk', plan: [0.13, 0.62], taste: 3 },
+  stream: { name: 'Stream', short: 'Stream', plan: [0.72, 0.84] },
+  break: { name: 'Break room', short: 'Break room', plan: [0.87, 0.46] },
+  rock: { name: 'The Rock', short: 'The Rock', plan: [0.55, 0.12] },
+  lobby: { name: 'Lobby', short: 'Lobby', plan: [0.58, 0.52] },
+};
+const EDGES = [
+  ['desk:0', 'desk:1', 1], ['desk:1', 'desk:2', 1], ['desk:0', 'desk:3', 1], ['desk:3', 'desk:1', 1],
+  ['desk:2', 'lobby', 1], ['desk:3', 'stream', 2], ['lobby', 'stream', 1], ['lobby', 'break', 1],
+  ['lobby', 'rock', 2], ['stream', 'break', 2], ['stream', 'rock', 2], ['break', 'rock', 2], ['rock', 'desk:2', 2],
+];
+const ADJ = {};
+for (const id in ROOMS) ADJ[id] = [];
+for (const [a, b, c] of EDGES) { ADJ[a].push([b, c]); ADJ[b].push([a, c]); }
+const HOME_ROOMS = ['desk:0', 'desk:1', 'desk:2', 'desk:3', 'stream', 'break', 'lobby'];
+
+function distances(from, blocked = []) {
+  const d = { [from]: 0 };
+  const open = [from];
+  while (open.length) {
+    let bi = 0;
+    for (let i = 1; i < open.length; i++) if (d[open[i]] < d[open[bi]]) bi = i;
+    const u = open.splice(bi, 1)[0];
+    for (const [v, c] of ADJ[u]) {
+      if (blocked.includes(v)) continue;
+      const nd = d[u] + c;
+      if (d[v] === undefined || nd < d[v]) { d[v] = nd; if (!open.includes(v)) open.push(v); }
+    }
+  }
+  return d;
+}
+
+function pathTo(from, to, blocked = []) {
+  const d = distances(from, blocked);
+  if (d[to] === undefined) return [];
+  const out = [to];
+  let cur = to;
+  let guard = 0;
+  while (cur !== from && guard++ < 20) {
+    let found = false;
+    for (const [v, c] of ADJ[cur]) {
+      if (d[v] !== undefined && d[v] + c === d[cur] && !blocked.includes(v)) { out.unshift(v); cur = v; found = true; break; }
+    }
+    if (!found) break;
+  }
+  return out; // includes from
+}
+
+// Interest is a tug of war: warming somebody the other side courted wears them down first.
+function warmRule(cur, curFor, amount, by) {
+  if (curFor !== NONE && curFor !== by && cur > 0) {
+    const left = cur - amount;
+    if (left > 0) return [left, curFor];
+    if (left === 0) return [0, NONE];
+    return [Math.min(-left, A.CUR_MAX), by];
+  }
+  if (amount < 0) return [Math.max(cur + amount, 0), cur + amount > 0 ? curFor : NONE];
+  return [Math.min(cur + amount, A.CUR_MAX), by];
+}
+
+class Game {
+  constructor(seed) {
+    this.seed = seed >>> 0;
+    this.rng = mulberry32(this.seed);
+    this.people = []; this.nextId = 1; this.usedNames = new Set();
+    this.round = 1; this.move = 1;
+    this.pos = { 0: 'stream', 1: 'break' };
+    this.satchel = { 0: [], 1: [] };
+    this.points = { 0: 0, 1: 0 }; this.clapsTotal = { 0: 0, 1: 0 }; this.boosTotal = { 0: 0, 1: 0 };
+    this.presented = { 0: false, 1: false }; this.rigged = { 0: false, 1: false }; this.sablog = { 0: [], 1: [] };
+    this.roles = { 0: RO.STAFF, 1: RO.STAFF }; this.stats = { 0: [1, 1, 1, 1], 1: [1, 1, 1, 1] }; this.parties = { 0: [], 1: [] };
+    this.lastFirst = N; this.lastLeader = NONE; this.leadChanges = 0; this.startFlip = false;
+    this.log = []; this.over = false; this.first = P; this.roundCard = null;
+    this.resetRoundStats();
+  }
+  r() { return this.rng(); }
+  ri(n) { return Math.floor(this.rng() * n); }
+  pick(a) { return a[this.ri(a.length)]; }
+  say(side, text) { this.log.push({ side, text, round: this.round, move: this.move }); }
+  other(s) { return 1 - s; }
+  stat(s, i) { return this.stats[s][i]; }
+  has(s, role) { return this.people.some(p => p.side === s && p.role === role && claps(p.kind)); }
+  count(s) { let n = 0; for (const p of this.people) if (p.side === s && claps(p.kind)) n++; return n; }
+  isCurious(p) { return p.kind === K.NEUTRAL && p.curiosity >= A.CURIOUS_AT; }
+  isCuriousFor(p, s) { return this.isCurious(p) && p.curiousFor === s; }
+  steps(s) { return 2 + Math.floor(this.stat(s, 2) / 2); }
+  resetRoundStats() {
+    this.roundStats = { 0: { claps: 0, boos: 0, gained: 0, lost: 0 }, 1: { claps: 0, boos: 0, gained: 0, lost: 0 } };
+  }
+
+  pickName() {
+    for (let i = 0; i < 40; i++) { const n = this.pick(NAMES); if (!this.usedNames.has(n)) { this.usedNames.add(n); return n; } }
+    const f = 'Colleague ' + (this.usedNames.size + 1); this.usedNames.add(f); return f;
+  }
+  randomRole() {
+    const w = [1, 2, 2, 2, 2, 2, 2, 5, 4];
+    let t = this.r() * w.reduce((a, b) => a + b, 0);
+    for (let i = 0; i < w.length; i++) { t -= w[i]; if (t < 0) return i; }
+    return RO.STAFF;
+  }
+  addPerson(kind, side, room, role = -1) {
+    const r = role >= 0 ? role : this.randomRole();
+    const p = { id: this.nextId++, name: this.pickName(), kind, side, room, home: room, role: r,
+      taste: this.pick(ROLE_TASTES[r]), curiosity: 0, curiousFor: NONE, resolve: false };
+    this.people.push(p);
+    return p;
+  }
+
+  // cfg: {role, stats:[4], party:[roles]}
+  setup(cfg) {
+    this.roles[P] = cfg.role; this.stats[P] = cfg.stats.slice(); this.parties[P] = cfg.party.slice();
+    const nr = this.pick(PLAYABLE);
+    this.roles[N] = nr;
+    const ns = ROLE_STATS[nr].slice();
+    for (let i = 0; i < A.FREE_POINTS; i++) {
+      let k = this.ri(4);
+      if (ns[k] >= A.STAT_MAX) k = (k + 1) % 4;
+      ns[k]++;
+    }
+    this.stats[N] = ns;
+    this.parties[N] = this.parties[P].map(() => this.pick(PLAYABLE));
+
+    for (const side of [P, N]) {
+      this.addPerson(K.HATER, side, this.pick(HOME_ROOMS));
+      for (const r of this.parties[side]) this.addPerson(K.FOLLOWER, side, this.pick(HOME_ROOMS), r);
+    }
+    let ceo = false;
+    for (let i = 0; i < A.NEUTRALS; i++) {
+      const q = this.addPerson(K.NEUTRAL, NONE, this.pick(HOME_ROOMS));
+      if (q.role === RO.CEO) { if (ceo) { q.role = RO.STAFF; q.taste = this.pick(ROLE_TASTES[RO.STAFF]); } ceo = true; }
+    }
+    this.startFlip = this.r() < 0.5;
+    this.placeForRound();
+  }
+
+  placeForRound() {
+    const swap = (this.round % 2 === 0) !== this.startFlip;
+    this.pos = { 0: swap ? 'break' : 'stream', 1: swap ? 'stream' : 'break' };
+  }
+
+  reachFrom(s, here, extra = 0) {
+    const d = distances(here, [this.pos[this.other(s)]]);
+    const out = {};
+    for (const id in d) if (d[id] <= this.steps(s) + extra) out[id] = d[id];
+    return out;
+  }
+
+  demand(s) {
+    const d = [0, 0, 0, 0];
+    for (const p of this.people) if ((p.side === s && claps(p.kind)) || this.isCuriousFor(p, s)) d[p.taste]++;
+    return d;
+  }
+
+  // Who a desk visit at [room] warms, nearest first on the board.
+  warmTargets(room, side) {
+    const d = distances(room);
+    const n = A.WARM_COUNT + (this.has(side, RO.INTERN) ? 1 : 0);
+    return this.people
+      .filter(p => p.kind === K.NEUTRAL && d[p.room] !== undefined && d[p.room] <= A.WARM_RANGE)
+      .sort((a, b) => d[a.room] - d[b.room] || (this.isCuriousFor(a, side) ? 1 : 0) - (this.isCuriousFor(b, side) ? 1 : 0) || a.id - b.id)
+      .slice(0, n);
+  }
+  warmPreview(room, side) {
+    let fresh = 0, stolen = 0;
+    for (const q of this.warmTargets(room, side)) {
+      const r = warmRule(q.curiosity, q.curiousFor, A.WARM_AMOUNT, side);
+      const wasTheirs = this.isCurious(q) && q.curiousFor !== side;
+      const nowMine = r[1] === side && r[0] >= A.CURIOUS_AT;
+      if (wasTheirs && !(r[1] !== side && r[0] >= A.CURIOUS_AT)) stolen++;
+      if (nowMine && !this.isCuriousFor(q, side)) fresh++;
+    }
+    return [fresh, stolen];
+  }
+  warm(p, amount, by) {
+    const r = warmRule(p.curiosity, p.curiousFor, amount, by);
+    p.curiosity = r[0]; p.curiousFor = r[1];
+  }
+
+  closeMax(s) { return A.STREAM_CLOSE + (this.has(s, RO.SALES) ? 1 : 0); }
+  chill(s) { const c = A.RUMOUR_CHILL + 0.4 * this.stat(s, 1); return this.has(s, RO.MKT) ? c * 2 : c; }
+
+  poachTargets(side, limit = 2, from = null) {
+    const other = this.other(side);
+    const d = distances(from || this.pos[side]);
+    const out = [];
+    for (const p of this.people) {
+      if (p.side !== other || !flippable(p.kind) || p.resolve || p.room === 'rock') continue;
+      let card = this.satchel[side].findIndex(c => c.taste === p.taste);
+      if (card < 0 && p.role === RO.INTERN && this.satchel[side].length > 0) card = 0;
+      if (card < 0) continue;
+      const prop = this.satchel[side][card];
+      out.push({
+        id: 'poach:' + p.id, kind: 'poach', station: p.room, target: p.id, card,
+        label: 'Buy ' + p.name,
+        sub: `${ROLE_NAME[p.role]}, wants ${TASTE[p.taste]}; spend ${prop.name} in the ${ROOMS[p.room].name.toLowerCase()}`,
+        enabled: true, why: '', value: 4.2, walk: d[p.room] ?? 99,
+      });
+    }
+    out.sort((a, b) => a.walk - b.walk);
+    return out.slice(0, limit);
+  }
+  threatened(side) { return this.poachTargets(this.other(side), 1).length > 0; }
+
+  // Every legal move for [side], each saying what it would do. The same list feeds
+  // the player's cards and the nemesis's choice.
+  options(side, fromRoom = '', lookahead = true) {
+    const other = this.other(side);
+    const demand = this.demand(side);
+    const here = fromRoom || this.pos[side];
+    const opts = [];
+
+    for (let i = 0; i < 4; i++) {
+      const id = 'desk:' + i;
+      const w = this.warmPreview(id, side);
+      let sub = `take a ${TASTE[i]} card; ${demand[i]} in the room want it`;
+      if (w[0] > 0) sub += `; ${w[0]} nearby get curious`;
+      if (w[1] > 0) sub += `; steals ${w[1]} from them`;
+      opts.push({ id, kind: 'desk', taste: i, station: id, label: `${TASTE[i]} desk`, sub, enabled: true, why: '',
+        value: demand[i] + 1.1 * w[0] + 0.7 * w[1] });
+    }
+
+    const curious = this.people.filter(p => this.isCuriousFor(p, side) && p.room === 'stream').length;
+    const cm = this.closeMax(side);
+    opts.push({ id: 'stream', kind: 'stream', station: 'stream', label: 'Stream',
+      sub: curious > 0 ? `close up to ${cm} of the ${curious} curious about you there` : 'nobody curious about you there yet; warms them a little',
+      enabled: true, why: '', value: Math.min(curious, cm) * 2.6 + (curious === 0 ? 0.4 : 0) });
+
+    const exposed = this.people.filter(p => p.side === side && flippable(p.kind) && !p.resolve).length;
+    opts.push({ id: 'break', kind: 'break', station: 'break', label: 'Break room',
+      sub: exposed > 0 ? `shield your ${exposed} followers from being bought this round; a wage slave pads the crowd` : 'a wage slave pads the crowd; nothing of yours is exposed',
+      enabled: true, why: '', value: 0.5 + (exposed >= 1 && this.threatened(side) ? 2.4 : 0) });
+
+    const haters = this.people.filter(p => p.side === side && p.kind === K.HATER).length;
+    if (this.count(side) >= 2 && haters < A.BULLY_FROM) {
+      opts.push({ id: 'heckler', kind: 'heckler', station: 'break', label: 'Send a heckler',
+        sub: `one of your followers turns sour and boos their every talk; with ${A.BULLY_FROM} they send a bully`,
+        enabled: true, why: '',
+        value: (this.count(side) >= this.count(other) + 1 ? 1.8 : 0.6) + (haters === A.BULLY_FROM - 1 ? 0.8 : 0) });
+    }
+
+    // --- sabotage ---
+    const theirHand = this.satchel[other];
+    const tastes = [...new Set(theirHand.map(c => c.taste).filter(t => t >= 0))].slice(0, 2);
+    for (const t of tastes) {
+      const legal = this.has(other, RO.LEGAL);
+      opts.push({ id: 'pinch:' + t, kind: 'pinch', taste: t, station: 'desk:' + t, label: `Pinch their ${TASTE[t]} card`,
+        sub: `take it out of their hand and into yours; they hold ${theirHand.length}`,
+        enabled: !legal, why: legal ? 'their Legal has the desk locked' : '',
+        value: 2.6 + 0.4 * theirHand.length + (demand[t] >= 2 ? 0.8 : 0) + 0.3 * this.stat(side, 1) });
+    }
+    const theirsNear = this.people.filter(p => p.kind === K.NEUTRAL && p.curiousFor === other && p.curiosity > 0 && p.room === 'stream').length;
+    if (theirsNear > 0) {
+      opts.push({ id: 'rumour', kind: 'rumour', station: 'stream', label: 'Spread a rumour',
+        sub: `${theirsNear} by the water were warming to them; cools each by ${this.chill(side).toFixed(1)}`,
+        enabled: true, why: '', value: 0.9 * Math.min(theirsNear, 3) + 0.3 * this.stat(side, 1) });
+    }
+    if (!this.rigged[other] && !this.presented[other] && theirHand.length >= 1 && this.move < A.MOVES) {
+      const it = this.has(other, RO.IT);
+      opts.push({ id: 'rig', kind: 'rig', station: 'rock', label: 'Rig the projector',
+        sub: 'their best slide comes up blank at their talk, unless they spend a move to check it',
+        enabled: !it, why: it ? 'their IT has it locked down' : '',
+        value: (theirHand.length >= 2 ? 2.4 : 1.0) + 0.3 * this.stat(side, 1) });
+    }
+    if (this.rigged[side]) {
+      opts.push({ id: 'check', kind: 'check', station: 'rock', label: 'Check the projector',
+        sub: 'it has been rigged against you; this puts it right', enabled: true, why: '',
+        value: this.satchel[side].length >= 2 ? 2.2 : 0.9 });
+    }
+
+    for (const t of this.poachTargets(side, 2, here)) opts.push(t);
+
+    const hand = this.satchel[side].length;
+    opts.push({ id: 'present', kind: 'present', station: 'rock', label: 'Present now',
+      sub: `${hand} slide${hand === 1 ? '' : 's'} in hand; forfeits your remaining moves` + (this.rigged[side] ? '. Projector rigged: your best slide will be blank' : ''),
+      enabled: true, why: '', value: hand >= A.SLIDES ? 2.5 : -1 });
+
+    if (here !== 'lobby') {
+      opts.push({ id: 'lobby', kind: 'lobby', station: 'lobby', label: 'Walk to the Lobby',
+        sub: 'no action; the hub, close to every room', enabled: true, why: '', value: 0.2 });
+    }
+
+    // The board has the last word on every card.
+    const reach = this.reachFrom(side, here);
+    const reachSales = this.has(side, RO.SALES) ? this.reachFrom(side, here, 1) : reach;
+    for (const o of opts) if (o.enabled) this.gate(side, o, o.kind === 'poach' ? reachSales : reach, here);
+
+    if (lookahead) {
+      for (const o of opts) if (o.enabled && o.kind !== 'present') o.value += 0.5 * this.bestNext(side, o.station);
+    }
+    return opts;
+  }
+
+  gate(side, o, reach, here) {
+    const other = this.other(side);
+    const room = o.station;
+    o.steps = reach[room];
+    if (room === this.pos[other]) { o.enabled = false; o.why = 'your nemesis is standing there'; }
+    else if (reach[room] === undefined) {
+      const far = distances(here, [this.pos[other]])[room];
+      o.enabled = false;
+      o.why = far !== undefined ? `${far} steps away, you have ${this.steps(side)}` : 'no way through; they are in the doorway';
+    }
+  }
+
+  bestNext(side, room) {
+    let best = 0;
+    for (const o of this.options(side, room, false)) {
+      if (o.enabled && o.kind !== 'present' && o.kind !== 'lobby') best = Math.max(best, o.value);
+    }
+    return best;
+  }
+
+  // --- doing things ---
+  execute(side, opt) {
+    const who = side === P ? 'You' : 'They';
+    this.pos[side] = opt.station;
+    switch (opt.kind) {
+      case 'desk': this.actDesk(side, opt.taste); break;
+      case 'stream': this.actStream(side); break;
+      case 'break': this.actBreak(side); break;
+      case 'heckler': this.actHeckler(side); break;
+      case 'pinch': this.actPinch(side, opt.taste); break;
+      case 'rumour': this.actRumour(side); break;
+      case 'rig': this.actRig(side); break;
+      case 'check': this.actCheck(side); break;
+      case 'poach': this.actPoach(side, opt.target, opt.card); break;
+      case 'lobby': this.say(side, `${who} stepped into the Lobby.`); break;
+      default: this.say(side, `${who} stood still.`);
+    }
+  }
+
+  actDesk(side, taste) {
+    const prop = { taste, name: this.pick(PROPS[taste]) };
+    this.satchel[side].push(prop);
+    let fresh = 0;
+    for (const q of this.warmTargets('desk:' + taste, side)) {
+      const was = this.isCuriousFor(q, side);
+      this.warm(q, A.WARM_AMOUNT, side);
+      if (this.isCurious(q)) q.room = 'stream';
+      if (!was && this.isCuriousFor(q, side)) fresh++;
+    }
+    this.say(side, side === P ? `You took ${prop.name}. ${fresh} got curious and drifted to the stream.`
+      : `They took a ${TASTE[taste]} card. ${fresh} got curious about them.`);
+  }
+
+  actStream(side) {
+    const cur = this.people.filter(p => this.isCuriousFor(p, side) && p.room === 'stream').sort((a, b) => b.curiosity - a.curiosity);
+    if (!cur.length) {
+      let n = 0;
+      for (const p of this.people) if (p.kind === K.NEUTRAL && p.room === 'stream') { this.warm(p, 0.5, side); n++; }
+      this.say(side, side === P ? `Nobody at the water was interested yet. ${n} warmed a little.` : `They loitered at the stream. ${n} warmed a little.`);
+      return;
+    }
+    let taken = 0;
+    for (const p of cur) {
+      if (taken >= this.closeMax(side)) break;
+      p.kind = p.curiosity >= A.CUR_MAX - 0.01 && this.r() < 0.3 ? K.INFLUENCER : K.FOLLOWER;
+      p.side = side; p.curiosity = 0; p.curiousFor = NONE; p.room = p.home;
+      taken++;
+    }
+    this.roundStats[side].gained += taken;
+    this.say(side, side === P ? `You won over ${taken} at the water.` : `They won over ${taken} at the water.`);
+  }
+
+  actBreak(side) {
+    this.addPerson(K.WAGE, side, 'break');
+    for (const p of this.people) if (p.side === side && flippable(p.kind)) p.resolve = true;
+    this.say(side, side === P ? 'Rallied. Your people cannot be bought this round; a wage slave drifted in.'
+      : 'They rallied. Nobody of theirs can be bought this round.');
+  }
+
+  actHeckler(side) {
+    const pool = this.people.filter(p => p.side === side && p.kind === K.FOLLOWER);
+    if (!pool.length) return;
+    const q = this.pick(pool);
+    q.kind = K.HATER;
+    this.say(side, side === P ? `${q.name} has gone sour on your behalf.` : `They turned ${q.name} into a heckler.`);
+  }
+
+  actPinch(side, taste) {
+    const other = this.other(side);
+    const i = this.satchel[other].findIndex(c => c.taste === taste);
+    if (i < 0) return;
+    const card = this.satchel[other].splice(i, 1)[0];
+    this.satchel[side].push(card);
+    if (side === P) { this.say(P, `You pinched their ${card.name}.`); this.sablog[N].push(`you pinched their ${TASTE[taste]}`); }
+    else { this.say(N, `They pinched your ${card.name} right off the desk.`); this.sablog[P].push(`they pinched your ${TASTE[taste]}`); }
+  }
+
+  actRumour(side) {
+    const other = this.other(side);
+    let n = 0;
+    for (const p of this.people) {
+      if (p.kind === K.NEUTRAL && p.curiousFor === other && p.curiosity > 0 && p.room === 'stream') { this.warm(p, this.chill(side), side); n++; }
+    }
+    if (side === P) { this.say(P, `A word by the water. ${n} went cold on them.`); this.sablog[N].push(`your rumour cooled ${n}`); }
+    else { this.say(N, `They have been talking about you by the water. ${n} of yours went cold.`); this.sablog[P].push(`their rumour cooled ${n} of yours`); }
+  }
+
+  actRig(side) {
+    this.rigged[this.other(side)] = true;
+    this.say(side, side === P ? 'Projector rigged. Their best slide will be blank.' : 'They were at the rock. Your projector is rigged: check it, or present blind.');
+  }
+  actCheck(side) {
+    this.rigged[side] = false;
+    this.say(side, side === P ? 'Projector checked and put right.' : 'They checked the projector. Your rig is undone.');
+  }
+  springRig(side) {
+    if (!this.rigged[side]) return null;
+    this.rigged[side] = false;
+    const h = this.satchel[side];
+    if (!h.length) return null;
+    const d = this.demand(side);
+    let best = 0;
+    for (let i = 0; i < h.length; i++) if (h[i].taste >= 0 && d[h[i].taste] > (h[best].taste >= 0 ? d[h[best].taste] : -1)) best = i;
+    const lost = h[best];
+    h[best] = { taste: -1, name: A.DUD };
+    this.say(side, side === P ? `The projector was rigged. Your ${lost.name} is a blank slide.` : `Their projector was rigged. Their ${lost.name} came up blank.`);
+    return lost;
+  }
+
+  actPoach(side, targetId, card) {
+    const t = this.people.find(p => p.id === targetId);
+    if (!t || card < 0 || card >= this.satchel[side].length) return;
+    const prop = this.satchel[side].splice(card, 1)[0];
+    t.kind = K.FOLLOWER; t.side = side;
+    this.roundStats[side].gained++; this.roundStats[this.other(side)].lost++;
+    this.say(side, side === P ? `${t.name} took ${prop.name} and came over.` : `They bought ${t.name} off you with ${prop.name}.`);
+  }
+
+  tickInfluencers(side) {
+    for (const p of this.people) {
+      if (p.side !== side || p.kind !== K.INFLUENCER) continue;
+      const d = distances(p.room);
+      const q = this.people.filter(x => x.kind === K.NEUTRAL && !this.isCuriousFor(x, side))
+        .sort((a, b) => (d[a.room] ?? 99) - (d[b.room] ?? 99) || a.id - b.id)[0];
+      if (!q) continue;
+      this.warm(q, A.WARM_AMOUNT, side);
+      if (this.isCurious(q)) q.room = 'stream';
+    }
+  }
+
+  noteLead() {
+    const a = this.count(P), b = this.count(N);
+    const leader = a > b ? P : b > a ? N : NONE;
+    if (leader !== NONE && this.lastLeader !== NONE && leader !== this.lastLeader) this.leadChanges++;
+    if (leader !== NONE) this.lastLeader = leader;
+  }
+
+  sendBullies() {
+    for (const side of [P, N]) {
+      const h = this.people.filter(p => p.side === side && p.kind === K.HATER);
+      if (h.length >= A.BULLY_FROM) {
+        const b = this.pick(h); b.kind = K.BULLY;
+        this.say(side, side === N ? `${b.name} has been sent to sit at the front of your talk.` : `${b.name} is off to sit at the front of their talk.`);
+      }
+    }
+  }
+
+  firstMover() {
+    const a = this.count(P), b = this.count(N);
+    let f;
+    if (a > b) f = P; else if (b > a) f = N; else f = this.lastFirst === P ? N : P;
+    this.lastFirst = f;
+    return f;
+  }
+
+  beginRound() {
+    this.resetRoundStats();
+    for (const p of this.people) p.resolve = false;
+    this.presented = { 0: false, 1: false };
+    this.sablog = { 0: [], 1: [] };
+    if (this.round > 1) this.placeForRound();
+    this.move = 1;
+  }
+
+  // --- the talk ---
+  startTalk(side) {
+    const other = this.other(side);
+    this.presented[side] = true;
+    this.pos[side] = 'rock';
+    const hr = this.has(side, RO.HR);
+    const audience = [];
+    let bounced = 0;
+    for (const p of this.people) {
+      if (p.side === side && p.kind !== K.NEUTRAL && !booKind(p.kind)) audience.push(p);
+      else if (p.side === other && booKind(p.kind)) {
+        if (p.kind === K.BULLY && hr) { bounced++; continue; }
+        audience.push(p);
+      }
+    }
+    let slots = Math.floor(audience.length / perHeads(this.round));
+    if (this.count(side) < this.count(other)) slots += A.UNDERDOG;
+    if (this.has(side, RO.CEO)) slots++;
+    const d = distances('rock');
+    const spectators = this.people.filter(p => this.isCuriousFor(p, side))
+      .sort((a, b) => d[a.room] - d[b.room] || b.curiosity - a.curiosity || a.id - b.id).slice(0, Math.max(slots, 0));
+    const blanked = this.springRig(side);
+    const hand = this.satchel[side].slice();
+    const booers = audience.filter(p => p.side === other);
+    return {
+      side, audience, spectators, hand, played: [], claps: 0, boos: 0, blanked, bounced,
+      booers, bully: booers.some(b => b.kind === K.BULLY),
+      heckles: booers.length ? hecklesFor(this.round) : 0, hecklesDone: 0, pending: false,
+      slidesMax: Math.min(A.SLIDES, hand.length), lines: [], lost: [], won: [], done: false,
+    };
+  }
+  fans(t, taste) {
+    let n = 0;
+    for (const p of t.audience) if (p.side === t.side && claps(p.kind) && p.taste === taste) n++;
+    for (const p of t.spectators) if (p.taste === taste) n++;
+    return n;
+  }
+  slideClaps(t, card) {
+    if (card.taste < 0) return 0;
+    const f = this.fans(t, card.taste);
+    return Math.round((2 + 5 * f) * (1 + 0.12 * this.stat(t.side, 0))) +
+      (this.has(t.side, RO.ENG) && (card.taste === 0 || card.taste === 2) ? f : 0);
+  }
+  heckleOdds(t) {
+    const lovers = t.audience.filter(p => p.side === t.side && p.kind === K.LOVER).length;
+    return Math.min(0.95, 0.6 + 0.1 * lovers);
+  }
+  ignoreCost(t) { return Math.max(1, 4 - this.stat(t.side, 3)); }
+  playSlide(t, idx) {
+    const card = t.hand.splice(idx, 1)[0];
+    t.played.push(card);
+    const c = this.slideClaps(t, card);
+    let b = card.taste < 0 ? 3 : 0;
+    for (const bo of t.booers) b += bo.kind === K.BULLY ? 3 : 2;
+    t.claps += c; t.boos += b;
+    t.lines.push(card.taste < 0 ? `A blank slide. The room stares at the wall. ${b} boos.`
+      : `${card.name}: ${this.fans(t, card.taste)} wanted ${TASTE[card.taste]}. ${c} claps${b ? `, ${b} boos` : ''}.`);
+    if (t.hecklesDone < t.heckles) t.pending = true;
+  }
+  resolveHeckle(t, clapBack) {
+    t.hecklesDone++; t.pending = false;
+    if (clapBack) {
+      if (this.r() < this.heckleOdds(t)) { t.claps += 9; t.lines.push('Clapped back. The room roars: +9 claps.'); }
+      else {
+        t.boos += 5; t.lines.push('The comeback fell flat: +5 boos.');
+        if (t.bully) { const q = this.loseOne(t); if (q) t.lines.push(`The bully took ${q.name} with them.`); }
+      }
+    } else {
+      const c = this.ignoreCost(t);
+      t.boos += c; t.lines.push(`Let it go: +${c} boos.`);
+    }
+  }
+  loseOne(t) {
+    const pool = t.audience.filter(p => p.side === t.side && flippable(p.kind) && !t.lost.includes(p));
+    if (!pool.length) return null;
+    const q = this.pick(pool); t.lost.push(q); return q;
+  }
+  aiSlide(t) {
+    let best = 0, bw = -1;
+    for (let i = 0; i < t.hand.length; i++) { const w = t.hand[i].taste < 0 ? -1 : this.fans(t, t.hand[i].taste); if (w > bw) { bw = w; best = i; } }
+    return best;
+  }
+  finishTalk(t) {
+    const side = t.side;
+    if (t.bully) { const q = this.loseOne(t); if (q) t.lines.push(`The bully at the front walked off with ${q.name}.`); }
+    const C = t.claps, B = t.boos;
+    const lovers = t.audience.filter(p => p.side === side && p.kind === K.LOVER).length;
+    let n = Math.max(0, Math.floor((B - 4 * this.stat(side, 3) - 0.5 * C) / 8)) - lovers;
+    while (n-- > 0) this.loseOne(t);
+    const ratio = C / Math.max(C + B, 1);
+    const conv = Math.round(t.spectators.length * Math.min(1, Math.max(0, (ratio - 0.35) / 0.5)));
+    t.won = t.spectators.slice(0, conv);
+    for (const p of t.won) { p.kind = K.FOLLOWER; p.side = side; p.curiosity = 0; p.curiousFor = NONE; p.room = p.home; }
+    for (const q of t.lost) { q.kind = K.NEUTRAL; q.side = NONE; q.curiosity = A.CURIOUS_AT - 0.5; q.curiousFor = side; q.resolve = false; q.room = q.home; }
+    t.ratio = ratio;
+    t.gained = Math.max(C - B, 0);
+    this.points[side] += t.gained;
+    this.clapsTotal[side] += C; this.boosTotal[side] += B;
+    this.roundStats[side].claps += C; this.roundStats[side].boos += B;
+    this.roundStats[side].gained += t.won.length; this.roundStats[side].lost += t.lost.length;
+    if (ratio > 0.78 && C >= 20) {
+      const f = this.people.find(p => p.side === side && p.kind === K.FOLLOWER);
+      if (f) { f.kind = K.LOVER; t.lover = f; }
+    }
+    this.satchel[side] = [];
+    this.noteLead();
+    t.done = true;
+    const who = side === P ? 'Your' : 'Their';
+    this.say(side, `${who} talk: ${C} claps, ${B} boos. Won ${t.won.length}, lost ${t.lost.length}.`);
+  }
+
+  endRound() {
+    for (const p of this.people) if (p.kind === K.BULLY) p.kind = K.HATER;
+    this.roundCard = {
+      round: this.round, last: this.round >= A.ROUNDS,
+      you: { ...this.roundStats[P], people: this.count(P), points: this.points[P] },
+      them: { ...this.roundStats[N], people: this.count(N), points: this.points[N] },
+    };
+  }
+
+  nemesisChoose() {
+    let best = null, bv = -Infinity;
+    for (const o of this.options(N)) {
+      if (!o.enabled) continue;
+      if (o.kind === 'present' && this.move < A.MOVES && this.satchel[N].length < A.SLIDES) continue;
+      const v = o.value + this.r() * 0.1;
+      if (v > bv) { bv = v; best = o; }
+    }
+    return best || { kind: 'pass', station: this.pos[N], label: 'Wait' };
+  }
+
+  result() {
+    const a = this.count(P), b = this.count(N);
+    let winner = a > b ? P : b > a ? N : NONE;
+    if (winner === NONE) winner = this.points[P] > this.points[N] ? P : this.points[N] > this.points[P] ? N : NONE;
+    return { you: a, them: b, margin: a - b, winner, leadChanges: this.leadChanges, pts: [this.points[P], this.points[N]] };
+  }
+
+  // The whole match. agent answers the player's questions; hooks let a UI watch.
+  async run(agent, hooks = {}) {
+    const H = async (k, ...a) => { if (hooks[k]) await hooks[k](...a); };
+    while (this.round <= A.ROUNDS) {
+      this.beginRound();
+      const first = this.firstMover();
+      this.first = first;
+      await H('roundStart', first);
+      const order = first === P ? [P, N] : [N, P];
+      for (let m = 0; m < A.MOVES; m++) {
+        this.move = m + 1;
+        for (const side of order) {
+          if (this.presented[side]) continue;
+          this.turn = side;
+          let opt;
+          if (side === P) opt = await agent.chooseMove(this.options(P));
+          else { opt = this.nemesisChoose(); await H('nemesisMove', opt); }
+          if (opt.kind === 'present') {
+            this.say(side, side === P ? 'You went to the rock early.' : 'They went to the rock early.');
+            await this.runTalk(side, agent, hooks);
+          } else this.execute(side, opt);
+          this.tickInfluencers(side);
+          this.noteLead();
+          await H('afterMove', side, opt);
+        }
+      }
+      this.turn = NONE;
+      this.sendBullies();
+      for (const side of order) if (!this.presented[side]) await this.runTalk(side, agent, hooks);
+      this.endRound();
+      await H('roundEnd', this.roundCard);
+      this.round++;
+    }
+    this.round = A.ROUNDS;
+    this.over = true;
+    const res = this.result();
+    await H('matchEnd', res);
+    return res;
+  }
+
+  async runTalk(side, agent, hooks = {}) {
+    const H = async (k, ...a) => { if (hooks[k]) await hooks[k](...a); };
+    const t = this.startTalk(side);
+    await H('talkStart', t);
+    while (t.played.length < t.slidesMax) {
+      const idx = side === P ? await agent.chooseSlide(t, this) : this.aiSlide(t);
+      this.playSlide(t, idx);
+      await H('talkUpdate', t);
+      if (t.pending) {
+        const cb = side === P ? await agent.chooseHeckle(t, this) : false;
+        this.resolveHeckle(t, cb);
+        await H('talkUpdate', t);
+      }
+    }
+    this.finishTalk(t);
+    await H('talkEnd', t);
+  }
+}
+if (typeof module !== 'undefined') module.exports = { Game, A, P, N, NONE, K, RO, PLAYABLE, ROLE_STATS, TASTE, ROOMS, EDGES, distances, pathTo };
+// ==/ENGINE==
+
+</script>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const YOU = '#b8322a', THEM = '#2a5db0', INK = '#1f2440', PAD = '#fbf1a9', HI = '#ff9fd2';
+const BW = 186, BH = 134;
+const RELAX = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const HECKLES = ['Could have been an email!', 'Is this going to be on the test?', 'Next slide, please!', 'Who signed off on this?',
+  'Louder for the people at the stream!', 'Does it scale, though?', 'We tried that in 2019.'];
+
+let G = null;
+const UI = { await: null, filter: null, hover: null, theirPath: null, seenLog: 0 };
+const sleep = ms => new Promise(r => setTimeout(r, RELAX ? Math.min(ms, 150) : ms));
+
+function xy(id) { const p = ROOMS[id].plan; return [20 + p[0] * 1000, 20 + p[1] * 720]; }
+
+function banner(text, ms = 1100) {
+  const b = $('#banner'); b.textContent = text; b.classList.add('on');
+  return sleep(ms).then(() => b.classList.remove('on'));
+}
+
+// --- the board ---------------------------------------------------------------
+function arcPath(cx, cy, r, frac) {
+  if (frac >= 0.999) return `M ${cx} ${cy - r} a ${r} ${r} 0 1 1 -0.01 0`;
+  const a = -Math.PI / 2 + frac * Math.PI * 2;
+  const x = cx + r * Math.cos(a), y = cy + r * Math.sin(a);
+  return `M ${cx} ${cy - r} A ${r} ${r} 0 ${frac > 0.5 ? 1 : 0} 1 ${x.toFixed(1)} ${y.toFixed(1)}`;
+}
+
+function pipTitle(p) {
+  let s = `${p.name}, ${ROLE_NAME[p.role]}: ${KIND_NAME[p.kind]}`;
+  if (p.side === P) s += ', yours'; else if (p.side === N) s += ', theirs';
+  s += `. Wants ${TASTE[p.taste]}.`;
+  if (p.kind === K.NEUTRAL && p.curiousFor !== NONE && p.curiosity > 0)
+    s += ` ${p.curiosity >= A.CURIOUS_AT ? 'Curious' : 'Warming'} about ${p.curiousFor === P ? 'you' : 'them'} (${p.curiosity.toFixed(1)}).`;
+  if (p.resolve) s += ' Shielded this round.';
+  return s;
+}
+
+function pip(p, x, y) {
+  const col = p.side === P ? YOU : p.side === N ? THEM : null;
+  let g = `<g><title>${esc(pipTitle(p))}</title>`;
+  const glyph = TASTE_GLYPH[p.taste];
+  let light = true;
+  switch (p.kind) {
+    case K.NEUTRAL: {
+      light = false;
+      g += `<circle cx="${x}" cy="${y}" r="10" fill="#fffdf6" stroke="${INK}" stroke-width="1.4"/>`;
+      if (p.curiousFor !== NONE && p.curiosity > 0) {
+        const c = p.curiousFor === P ? YOU : THEM;
+        g += `<path d="${arcPath(x, y, 13, p.curiosity / A.CUR_MAX)}" fill="none" stroke="${c}" stroke-width="3" stroke-linecap="round"/>`;
+      }
+      break;
+    }
+    case K.FOLLOWER: g += `<circle cx="${x}" cy="${y}" r="10.5" fill="${col}" stroke="${INK}" stroke-width="1.4"/>`; break;
+    case K.INFLUENCER:
+      g += `<circle cx="${x}" cy="${y}" r="10.5" fill="${col}" stroke="${INK}" stroke-width="1.4"/>`;
+      g += `<text x="${x + 9}" y="${y - 6}" font-size="11" fill="${INK}">★</text>`; break;
+    case K.LOVER:
+      g += `<path d="M ${x} ${y + 11} C ${x - 17} ${y - 1}, ${x - 8} ${y - 15}, ${x} ${y - 6} C ${x + 8} ${y - 15}, ${x + 17} ${y - 1}, ${x} ${y + 11} Z" fill="${col}" stroke="${INK}" stroke-width="1.4"/>`; break;
+    case K.WAGE:
+      light = false;
+      g += `<rect x="${x - 9}" y="${y - 9}" width="18" height="18" fill="#cfcab7" stroke="${col}" stroke-width="2.4"/>`; break;
+    case K.HATER:
+    case K.BULLY: {
+      const r = p.kind === K.BULLY ? 11 : 9;
+      g += `<rect x="${x - r}" y="${y - r}" width="${2 * r}" height="${2 * r}" fill="${col}" stroke="${INK}" stroke-width="${p.kind === K.BULLY ? 3 : 1.4}"/>`;
+      g += `<text x="${x}" y="${y + 4.5}" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">✕</text></g>`;
+      return g;
+    }
+  }
+  if (p.resolve) g += `<circle cx="${x}" cy="${y}" r="15" fill="none" stroke="${INK}" stroke-width="1" stroke-dasharray="2 2"/>`;
+  g += `<text x="${x}" y="${y + 4}" text-anchor="middle" font-size="12" fill="${light ? '#fff' : INK}">${glyph}</text></g>`;
+  return g;
+}
+
+function token(side, x, y) {
+  const c = side === P ? YOU : THEM;
+  return `<g><title>${side === P ? 'You' : 'Your nemesis'}</title>
+    <circle cx="${x}" cy="${y}" r="17" fill="${c}" stroke="${INK}" stroke-width="2.5"/>
+    <text class="hand" x="${x}" y="${y + 6}" text-anchor="middle" font-size="20" font-weight="700" fill="#fff">${side === P ? 'you' : 'them'}</text></g>`;
+}
+
+function drawBoard() {
+  const svg = $('#board');
+  const yourTurn = !!UI.await;
+  const reach = yourTurn ? G.reachFrom(P, G.pos[P]) : {};
+  let path = [];
+  if (UI.hover) path = pathTo(G.pos[P], UI.hover.station, [G.pos[N]]);
+  else if (UI.theirPath) path = UI.theirPath;
+  const onPath = (a, b) => { for (let i = 0; i + 1 < path.length; i++) if ((path[i] === a && path[i + 1] === b) || (path[i] === b && path[i + 1] === a)) return true; return false; };
+
+  let s = `<defs>
+    <filter id="pen" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="4"/><feDisplacementMap in="SourceGraphic" scale="2.6"/></filter>
+    <pattern id="hatch" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(40)"><line x1="0" y1="0" x2="0" y2="9" stroke="${THEM}" stroke-width="2" opacity=".45"/></pattern>
+  </defs>`;
+  for (let y = 36; y < 720; y += 30) s += `<line x1="0" x2="1000" y1="${y}" y2="${y}" stroke="#9cc3d9" stroke-width="1" opacity=".75"/>`;
+  s += `<line x1="46" x2="46" y1="0" y2="720" stroke="#e0736f" stroke-width="1.5"/><line x1="50" x2="50" y1="0" y2="720" stroke="#e0736f" stroke-width="1"/>`;
+
+  // corridors
+  for (const [a, b, c] of EDGES) {
+    const [x1, y1] = xy(a), [x2, y2] = xy(b);
+    if (onPath(a, b)) s += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${UI.hover ? HI : THEM}" stroke-width="16" stroke-linecap="round" opacity=".6"/>`;
+    s += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${INK}" stroke-width="2.2" filter="url(#pen)" stroke-dasharray="${c > 1 ? '9 5' : ''}"/>`;
+  }
+  // rooms
+  for (const id in ROOMS) {
+    const [cx, cy] = xy(id);
+    const x = cx - BW / 2, y = cy - BH / 2;
+    const lit = yourTurn && reach[id] !== undefined && id !== G.pos[N];
+    const theirs = id === G.pos[N];
+    const filtered = UI.filter === id;
+    s += `<g class="room" data-room="${id}" tabindex="0" role="button" aria-label="${ROOMS[id].name}${lit ? `, ${reach[id]} steps` : ''}">`;
+    s += `<rect x="${x}" y="${y}" width="${BW}" height="${BH}" fill="${PAD}"/>`;
+    if (lit) s += `<rect x="${x + 4}" y="${y + 4}" width="${BW - 8}" height="${BH - 8}" fill="${HI}" opacity=".42"/>`;
+    if (theirs) s += `<rect x="${x}" y="${y}" width="${BW}" height="${BH}" fill="url(#hatch)"/>`;
+    s += `<rect class="frame" x="${x}" y="${y}" width="${BW}" height="${BH}" fill="none" stroke="${INK}" stroke-width="${filtered ? 5 : 2.6}" filter="url(#pen)"/>`;
+    if (ROOMS[id].taste !== undefined) s += `<text x="${x + BW - 14}" y="${y + BH - 12}" text-anchor="end" font-size="54" fill="${INK}" opacity=".12">${TASTE_GLYPH[ROOMS[id].taste]}</text>`;
+    s += `<text class="hand" x="${x + 10}" y="${y + 27}" font-size="27" font-weight="700" fill="${INK}">${ROOMS[id].short}</text>`;
+    if (lit && id !== G.pos[P]) {
+      s += `<circle cx="${x + BW - 18}" cy="${y + 18}" r="13" fill="#fff" stroke="${YOU}" stroke-width="2"/>`;
+      s += `<text class="hand" x="${x + BW - 18}" y="${y + 25}" text-anchor="middle" font-size="22" font-weight="700" fill="${YOU}">${reach[id]}</text>`;
+    }
+    // people
+    const here = G.people.filter(p => p.room === id)
+      .sort((a, b) => (a.side === P ? 0 : a.side === NONE ? 1 : 2) - (b.side === P ? 0 : b.side === NONE ? 1 : 2) || a.kind - b.kind || a.id - b.id);
+    const cols = here.length > 18 ? 7 : 6, dx = here.length > 18 ? 24 : 28;
+    here.forEach((p, i) => {
+      const px = x + 20 + (i % cols) * dx, py = y + 52 + Math.floor(i / cols) * 27;
+      if (py < y + BH - 4) s += pip(p, px, py);
+    });
+    if (here.length > cols * 3) s += `<text x="${x + BW - 8}" y="${y + BH - 6}" text-anchor="end" font-size="12" fill="${INK}">+${here.length - cols * 3}</text>`;
+    s += `</g>`;
+  }
+  // presenters on the top edge of their rooms
+  const [px, py] = xy(G.pos[P]), [nx, ny] = xy(G.pos[N]);
+  s += token(P, px - BW / 2 + 24, py - BH / 2 - 19);
+  s += token(N, nx + BW / 2 - 24, ny - BH / 2 - 19);
+  svg.innerHTML = s;
+
+  svg.querySelectorAll('.room').forEach(el => {
+    const go = () => { if (!UI.await) return; UI.filter = UI.filter === el.dataset.room ? null : el.dataset.room; render(); };
+    el.addEventListener('click', go);
+    el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+  });
+}
+
+function legend() {
+  const sw = inner => `<svg width="30" height="26" viewBox="-15 -13 30 26">${inner}</svg>`;
+  const fake = (kind, side, extra = {}) => pip({ id: 0, name: '', role: 8, taste: 0, kind, side, curiosity: 0, curiousFor: NONE, resolve: false, ...extra }, 0, 0);
+  const items = [
+    [fake(K.FOLLOWER, P), 'yours'], [fake(K.FOLLOWER, N), 'theirs'],
+    [fake(K.NEUTRAL, NONE, { curiosity: 2.2, curiousFor: P }), 'curious about you'],
+    [fake(K.LOVER, P), 'lover'], [fake(K.INFLUENCER, P), 'influencer'], [fake(K.WAGE, P), 'wage slave, not a point'],
+    [fake(K.HATER, P), 'heckler, not a point'],
+  ];
+  $('#legend').innerHTML = items.map(([g, t]) => `<span>${sw(g)}${t}</span>`).join('') +
+    `<span>${TASTE.map((t, i) => `${TASTE_GLYPH[i]} ${t}`).join(', ')}</span><span>dashed corridor: 2 steps</span>`;
+}
+
+// --- the side column ---------------------------------------------------------
+function render() {
+  if (!G) return;
+  drawBoard();
+  const a = G.count(P), b = G.count(N);
+  $('#score').innerHTML = `<span class="y">you ${a} <small>${G.points[P]} pts</small></span><span class="t">them ${b} <small>${G.points[N]} pts</small></span>`;
+  $('#where').textContent = G.over ? 'Match over' : `Round ${G.round} of ${A.ROUNDS}, move ${G.move} of ${A.MOVES}`;
+
+  const turn = UI.await ? '<p class="turn you">Your move</p>' : G.turn === N ? '<p class="turn them">Their move</p>' : '<p class="turn">At the rock</p>';
+  const hand = G.satchel[P];
+  const d = G.demand(P);
+  const flags = [];
+  if (G.rigged[P]) flags.push('Your projector is rigged');
+  if (G.rigged[N]) flags.push('You rigged their projector');
+  flags.push(...G.sablog[P]);
+  const party = s => G.parties[s].map(r => ROLE_NAME[r]).join(', ') || 'nobody';
+  $('#status').innerHTML = `<h2>The state of play</h2>${turn}
+    <p class="who"><b>You:</b> ${ROLE_NAME[G.roles[P]]}, ${G.steps(P)} steps a move. ${ROLE_RULE[G.roles[P]] ? esc(ROLE_RULE[G.roles[P]][0].toUpperCase() + ROLE_RULE[G.roles[P]].slice(1)) + ' while one claps for you.' : ''}</p>
+    <p class="who"><b>Them:</b> ${ROLE_NAME[G.roles[N]]}, with ${esc(party(N))}. ${G.satchel[N].length} card${G.satchel[N].length === 1 ? '' : 's'} in hand.</p>
+    <p style="margin-top:8px">Your hand</p>
+    <div class="chips">${hand.length ? hand.map(c => `<span class="chip ${c.taste < 0 ? 'dud' : ''}">${c.taste >= 0 ? TASTE_GLYPH[c.taste] + ' ' : ''}${esc(c.name)}</span>`).join('') : '<span class="who">Empty. Visit a desk.</span>'}</div>
+    <p>Who'd come to your talk wants</p>
+    <div class="wants">${TASTE.map((t, i) => `<div><b>${d[i]}</b><span>${TASTE_GLYPH[i]} ${t}</span></div>`).join('')}</div>
+    ${flags.length ? `<p class="flags">${flags.map(esc).join('. ')}.</p>` : ''}`;
+
+  const cards = $('#cards');
+  if (UI.await) {
+    $('#movesTitle').textContent = 'Your move';
+    let opts = UI.await.opts;
+    if (UI.filter) opts = opts.filter(o => o.station === UI.filter);
+    $('#filter').innerHTML = UI.filter ? `Only the ${esc(ROOMS[UI.filter].name)}. <button id="clearf">Show every card</button>`
+      : 'Hover a card to see its route. Click a room to see only its cards.';
+    const sorted = [...opts.filter(o => o.enabled), ...opts.filter(o => !o.enabled)];
+    const TRICK = ['pinch', 'rumour', 'rig'];
+    cards.innerHTML = sorted.length ? sorted.map((o, i) => `<button class="mv ${TRICK.includes(o.kind) ? 'trick' : ''}" data-i="${UI.await.opts.indexOf(o)}" ${o.enabled ? '' : 'disabled'}>
+      <span class="l">${esc(o.label)}</span>
+      <span class="st">${o.enabled ? (o.steps === 0 ? 'here' : `${o.steps} step${o.steps === 1 ? '' : 's'}`) : ''}</span>
+      <span class="s">${esc(o.enabled ? o.sub : o.why)}</span></button>`).join('') : '<p class="waiting">Nothing to do in that room this move.</p>';
+    cards.querySelectorAll('.mv').forEach(btn => {
+      const o = UI.await.opts[+btn.dataset.i];
+      btn.addEventListener('click', () => { const r = UI.await.res; UI.await = null; UI.hover = null; UI.filter = null; r(o); });
+      btn.addEventListener('mouseenter', () => { UI.hover = o; drawBoard(); });
+      btn.addEventListener('focus', () => { UI.hover = o; drawBoard(); });
+      btn.addEventListener('mouseleave', () => { UI.hover = null; drawBoard(); });
+    });
+    const cf = $('#clearf'); if (cf) cf.onclick = () => { UI.filter = null; render(); };
+  } else {
+    $('#movesTitle').textContent = G.turn === N ? 'Their move' : 'Waiting';
+    $('#filter').textContent = '';
+    cards.innerHTML = `<p class="waiting">${G.turn === N ? 'Your nemesis is choosing…' : 'Nothing for you to play right now.'}</p>`;
+  }
+
+  const log = G.log.slice(-40).reverse();
+  const fresh = G.log.length - UI.seenLog;
+  $('#log').innerHTML = log.map((e, i) => `<li class="s${e.side} ${i < fresh ? 'new' : ''}">${esc(e.text)}</li>`).join('');
+  UI.seenLog = G.log.length;
+}
+
+// --- modal sheets ------------------------------------------------------------
+function sheet(html, wire) {
+  $('#sheet').innerHTML = html;
+  $('#veil').hidden = false;
+  if (wire) wire($('#sheet'));
+  const f = $('#sheet').querySelector('button:not(:disabled)'); if (f) f.focus({ preventScroll: true });
+}
+function closeSheet() { $('#veil').hidden = true; $('#sheet').innerHTML = ''; }
+
+function setupFlow() {
+  return new Promise(done => {
+    const cfg = { role: 0, stats: [0, 0, 0, 0], party: [] };
+    let base = [0, 0, 0, 0];
+    const pageJob = () => sheet(`<h2>Who are you?</h2>
+      <p>Your job is a costume, a taste and a rule. The rule holds while anybody of that job is clapping for you, so buying their IT person unlocks their projector.</p>
+      <div class="jobs">${PLAYABLE.map(r => `<button class="job" data-r="${r}"><b>${ROLE_NAME[r]}</b>
+        <small>Wants ${ROLE_TASTES[r].map(t => TASTE[t]).join(' or ')}</small><small>${esc(ROLE_RULE[r])}</small>
+        <small>${ROLE_STATS[r].map((v, i) => `${STAT_NAME[i]} ${v}`).join(', ')}</small></button>`).join('')}</div>`,
+      el => el.querySelectorAll('.job').forEach(b => b.onclick = () => { cfg.role = +b.dataset.r; base = ROLE_STATS[cfg.role].slice(); cfg.stats = base.slice(); pageStats(); }));
+    const pageStats = () => {
+      const left = A.FREE_POINTS - cfg.stats.reduce((a, v, i) => a + v - base[i], 0);
+      sheet(`<h2>${ROLE_NAME[cfg.role]}. Spend four points.</h2>
+        ${STAT_NAME.map((n, i) => `<div class="stat"><b>${n}</b><small>${STAT_WHAT[i]}</small>
+          <button class="pm" data-i="${i}" data-d="-1" aria-label="less ${n}" ${cfg.stats[i] <= base[i] ? 'disabled' : ''}>−</button>
+          <span class="v">${cfg.stats[i]}</span>
+          <button class="pm" data-i="${i}" data-d="1" aria-label="more ${n}" ${left <= 0 || cfg.stats[i] >= A.STAT_MAX ? 'disabled' : ''}>+</button></div>`).join('')}
+        <p style="margin-top:10px">${left} point${left === 1 ? '' : 's'} left.</p>
+        <div class="row"><button class="btn alt" id="back">Pick another job</button><button class="btn" id="next">Choose colleagues</button></div>`,
+        el => {
+          el.querySelectorAll('.pm').forEach(b => b.onclick = () => { cfg.stats[+b.dataset.i] += +b.dataset.d; pageStats(); });
+          el.querySelector('#back').onclick = pageJob;
+          el.querySelector('#next').onclick = pageParty;
+        });
+    };
+    const pageParty = () => sheet(`<h2>Who comes with you?</h2>
+      <p>Up to four colleagues start on your side. Each one is a follower, and switches their job's rule on for you while they stay. Your nemesis brings as many as you do.</p>
+      <div class="jobs">${PLAYABLE.map(r => `<button class="job" data-r="${r}" ${cfg.party.length >= 4 ? 'disabled' : ''}><b>+ ${ROLE_NAME[r]}</b><small>${esc(ROLE_RULE[r])}</small></button>`).join('')}</div>
+      <h3>With you</h3><div class="chips">${cfg.party.length ? cfg.party.map((r, i) => `<button class="chip" data-x="${i}" aria-label="remove ${ROLE_NAME[r]}">${ROLE_NAME[r]} ✕</button>`).join('') : '<span class="who">Nobody yet.</span>'}</div>
+      <div class="row"><button class="btn alt" id="back">Back to stats</button><button class="btn" id="go">Begin the match</button></div>`,
+      el => {
+        el.querySelectorAll('.job').forEach(b => b.onclick = () => { if (cfg.party.length < 4) cfg.party.push(+b.dataset.r); pageParty(); });
+        el.querySelectorAll('[data-x]').forEach(b => b.onclick = () => { cfg.party.splice(+b.dataset.x, 1); pageParty(); });
+        el.querySelector('#back').onclick = pageStats;
+        el.querySelector('#go').onclick = () => { closeSheet(); done(cfg); };
+      });
+    pageJob();
+  });
+}
+
+function talkSheet(t, mode, resolve) {
+  const mine = t.side === P;
+  const own = t.audience.filter(p => p.side === t.side).length;
+  const booers = t.booers.length;
+  const fans = TASTE.map((_, i) => G.fans(t, i));
+  const tot = Math.max(t.claps + t.boos, 1);
+  let body = `<h2>${mine ? 'Your talk' : 'Their talk'}, round ${G.round}</h2>
+    <p>At the rock: ${own} of ${mine ? 'yours' : 'theirs'}, ${t.spectators.length} curious from the grass, ${booers} here to boo.${t.bounced ? ' HR turned a bully away at the door.' : ''}${t.blanked ? ` The projector was rigged: ${esc(t.blanked.name)} is now a blank slide.` : ''}</p>
+    <div class="wants">${TASTE.map((n, i) => `<div><b>${fans[i]}</b><span>${TASTE_GLYPH[i]} ${n}</span></div>`).join('')}</div>
+    <div class="meter ${mine ? '' : 'them'}"><div class="c" style="width:${100 * t.claps / tot}%"></div><div class="b" style="width:${100 * t.boos / tot}%"></div></div>
+    <div class="tally">${t.claps} claps, ${t.boos} boos</div>
+    ${t.lines.length ? `<ol class="lines">${t.lines.map(l => `<li>${esc(l)}</li>`).join('')}</ol>` : ''}`;
+  let wire = null;
+  if (mode === 'slide') {
+    body += `<h3>Slide ${t.played.length + 1} of ${t.slidesMax}</h3><div class="row">${t.hand.map((c, i) => `<button class="slide" data-i="${i}">
+      <b>${c.taste >= 0 ? TASTE_GLYPH[c.taste] + ' ' : ''}${esc(c.name)}</b>
+      <small>${c.taste < 0 ? 'blank; boos' : `${fans[c.taste]} in the crowd want ${TASTE[c.taste]}; about ${G.slideClaps(t, c)} claps`}</small></button>`).join('')}</div>`;
+    wire = el => el.querySelectorAll('.slide').forEach(b => b.onclick = () => resolve(+b.dataset.i));
+  } else if (mode === 'heckle') {
+    const odds = Math.round(100 * G.heckleOdds(t));
+    const who = t.booers[Math.floor(Math.random() * t.booers.length)];
+    body += `<p class="heckle">${who ? esc(who.name) + ': ' : ''}“${esc(HECKLES[Math.floor(Math.random() * HECKLES.length)])}”</p>
+      <div class="row"><button class="btn alt" id="ign">Let it go, +${G.ignoreCost(t)} boos</button><button class="btn" id="cb">Clap back, ${odds}% to land</button></div>
+      <p class="who" style="margin-top:8px">Landing is +9 claps. Missing is +5 boos${t.bully ? ', and the bully takes one of yours' : ''}.</p>`;
+    wire = el => { el.querySelector('#ign').onclick = () => resolve(false); el.querySelector('#cb').onclick = () => resolve(true); };
+  } else if (mode === 'end') {
+    const names = a => a.map(p => esc(p.name)).join(', ');
+    body += `<h3>${t.gained > 0 ? `+${t.gained} points` : 'No points'}</h3>
+      <p>${t.won.length ? `Won over from the grass: ${names(t.won)}.` : 'Nobody on the grass was convinced.'}
+      ${t.lost.length ? ` Walked back to the grass: ${names(t.lost)}.` : ''}${t.lover ? ` ${esc(t.lover.name)} is now a true believer.` : ''}</p>
+      <div class="row"><button class="btn" id="ok">Back to the board</button></div>`;
+    wire = el => el.querySelector('#ok').onclick = () => { closeSheet(); resolve(); };
+  }
+  sheet(body, wire);
+}
+
+function roundSheet(card) {
+  return new Promise(res => {
+    const rows = [['People who would clap', 'people'], ['Points', 'points'], ['Claps this round', 'claps'], ['Boos this round', 'boos'], ['Gained', 'gained'], ['Lost', 'lost']];
+    let head = `<h2>End of round ${card.round}</h2>`;
+    if (card.last) {
+      const r = G.result();
+      head = `<h2>${r.winner === P ? 'You win the office.' : r.winner === N ? 'Your nemesis takes the office.' : 'Dead level.'}</h2>
+        <p>${r.you} people to ${r.them}${r.margin === 0 ? `, ${r.pts[0]} points to ${r.pts[1]}` : ''}. The lead changed hands ${r.leadChanges} time${r.leadChanges === 1 ? '' : 's'}.</p>`;
+    }
+    sheet(`${head}<table class="rc"><thead><tr><th></th><th style="color:${YOU}">You</th><th style="color:${THEM}">Them</th></tr></thead><tbody>
+      ${rows.map(([l, k]) => `<tr><td>${l}</td><td>${card.you[k]}</td><td>${card.them[k]}</td></tr>`).join('')}</tbody></table>
+      <div class="row"><button class="btn" id="ok">${card.last ? 'Play again' : 'Next round'}</button></div>`,
+      el => el.querySelector('#ok').onclick = () => { closeSheet(); res(); });
+  });
+}
+
+// --- wiring the engine to the page -----------------------------------------
+const agent = {
+  chooseMove(opts) { return new Promise(res => { UI.await = { opts, res }; render(); }); },
+  chooseSlide(t) { return new Promise(res => talkSheet(t, 'slide', res)); },
+  chooseHeckle(t) { return new Promise(res => talkSheet(t, 'heckle', res)); },
+};
+const hooks = {
+  async roundStart(first) {
+    render();
+    const note = G.round === 1 ? (first === P ? 'You open.' : 'They open.')
+      : first === P ? 'Ahead, so you move first.' : 'Behind, so you get the last word.';
+    G.say(NONE, `Round ${G.round}. ${note} You start in the ${ROOMS[G.pos[P]].name}, they start in the ${ROOMS[G.pos[N]].name}.`);
+    render();
+    await banner(`Round ${G.round}`, 1200);
+  },
+  async nemesisMove(opt) {
+    UI.theirPath = pathTo(G.pos[N], opt.station, [G.pos[P]]);
+    render();
+    await sleep(650);
+  },
+  async afterMove(side) {
+    render();
+    if (side === N) { await sleep(500); UI.theirPath = null; render(); }
+  },
+  async talkStart(t) { render(); if (t.side === N) { talkSheet(t, 'watch'); await sleep(900); } },
+  async talkUpdate(t) { if (t.side === N) { talkSheet(t, 'watch'); await sleep(700); } },
+  async talkEnd(t) { render(); await new Promise(res => talkSheet(t, 'end', res)); render(); },
+  async roundEnd(card) { render(); await roundSheet(card); },
+  async matchEnd() { start(); },
+};
+
+async function start() {
+  G = new Game((Date.now() ^ (Math.random() * 1e9)) >>> 0);
+  UI.await = null; UI.filter = null; UI.hover = null; UI.theirPath = null; UI.seenLog = 0;
+  render();
+  const cfg = await setupFlow();
+  G.setup(cfg);
+  G.say(NONE, `Your nemesis is ${ROLE_NAME[G.roles[N]]}, with ${G.parties[N].map(r => ROLE_NAME[r]).join(', ') || 'nobody'}.`);
+  render();
+  G.run(agent, hooks);
+}
+legend();
+start();
+</script>
+</body>
+</html>

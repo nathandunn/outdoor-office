@@ -1,0 +1,767 @@
+// ==ENGINE== The Outdoor Office, party battle. Pure rules, no DOM; the page and sim.js both run this file.
+const TASTE = ['Data', 'Story', 'Gadget', 'Snacks'];
+const TASTE_GLYPH = ['#', '¶', '⚙', '☕'];
+const PROPS = [
+  ['the churn chart', 'the Q3 numbers', 'a heat map', 'the survey results'],
+  ['a customer story', 'the origin myth', 'a war story', 'the founder quote'],
+  ['the prototype', 'a live demo', 'a shiny widget', 'the headset'],
+  ['a box of donuts', 'the cheese plate', 'cold brew', 'a pizza'],
+];
+const GOLD = ['the board deck', 'the leaked roadmap', 'the award photo', 'the viral clip', 'the secret sauce', 'the 10x chart'];
+const RO = { CEO: 0, ENG: 1, IT: 2, HR: 3, MKT: 4, SALES: 5, LEGAL: 6, INTERN: 7, STAFF: 8 };
+const ROLE_NAME = ['CEO', 'Engineer', 'IT', 'HR', 'Marketing', 'Sales', 'Legal', 'Intern', 'Staff'];
+const ROLE_TASTES = [[0, 1], [0, 2], [2], [1], [1, 2], [3, 2], [0], [3], [0, 1, 2, 3]];
+// charm, guile, hustle, grit
+const ROLE_STATS = [[2, 1, 0, 1], [0, 1, 1, 2], [0, 2, 1, 1], [2, 0, 0, 2], [2, 2, 0, 0], [1, 1, 2, 0], [0, 2, 0, 2], [1, 0, 2, 1]];
+const PLAYABLE = [0, 1, 2, 3, 4, 5, 6, 7];
+const STAT_NAME = ['Charm', 'Guile', 'Hustle', 'Grit'];
+const STAT_WHAT = ['hits harder in an argument, lands slides', 'crits, pickpocketing', '+1 move every two points', 'more morale, takes less'];
+const ABILITY = [
+  { name: 'Rally', what: 'allies within 3 tiles regain 3 morale' },
+  { name: 'Prototype', what: 'build a Gadget slide, quality 2' },
+  { name: 'Jam', what: 'an enemy within 4 loses 2 morale and their ability goes on cooldown' },
+  { name: 'Counsel', what: 'an ally within 2, or yourself, regains 6 morale' },
+  { name: 'Rumour', what: 'every enemy within 2 tiles loses 3 morale' },
+  { name: 'Pitch', what: 'a neutral within 3 warms to you by 2' },
+  { name: 'Injunction', what: 'an enemy within 4 cannot move on their next turn' },
+  { name: 'Fetch', what: 'take a card from any desk within 6 tiles' },
+];
+const CONSULTANTS = [
+  { id: 'data', name: 'The Data Whisperer', price: 6, what: 'Data slides land half again as hard at the final talk' },
+  { id: 'spin', name: 'Spin Doctor', price: 6, what: '+1 damage on every argument you start' },
+  { id: 'agile', name: 'Agile Coach', price: 7, what: '+1 move for all your units' },
+  { id: 'pr', name: 'Crisis PR', price: 5, what: 'your demoralised come back after 1 turn, not 3' },
+  { id: 'hunt', name: 'Headhunter', price: 5, what: 'every pitch warms one more' },
+  { id: 'keynote', name: 'Keynote Coach', price: 6, what: '+3 claps a slide at the final talk' },
+];
+const CONTRACTORS = [
+  { id: 'runner', name: 'Runner', stats: [0, 1, 5, 1], morale: 7, price: 3, what: 'fast legs, weak argument; fetches loot' },
+  { id: 'heavy', name: 'Heavy', stats: [3, 0, 1, 3], morale: 11, price: 4, what: 'slow, loud, hard to shout down' },
+];
+const P = 0, N = 1, NONE = -1;
+const A = {
+  TURNS: 12, W: 31, H: 19, SULK: 3, CD: 3, CARRY: 4, SLIDES: 5, JOIN_AT: 2, DESK_STOCK: 3,
+  START_BUDGET: 3, CONTRACT_TURNS: 4, MAX_CONTRACTORS: 2, FREE_POINTS: 4, STAT_MAX: 5, DUD: 'a blank slide',
+};
+const NAMES = ['Ada', 'Bram', 'Cleo', 'Dev', 'Esme', 'Finn', 'Gus', 'Hana', 'Ines', 'Jo', 'Kit', 'Lars', 'Mina', 'Ned',
+  'Opal', 'Pip', 'Quinn', 'Rosa', 'Sol', 'Tam', 'Uma', 'Vic', 'Wren', 'Xavi', 'Yara', 'Zed', 'Bea', 'Cal', 'Dot',
+  'Eli', 'Flo', 'Hal', 'Ivy', 'Jem', 'Lou', 'Max', 'Nia', 'Ozzy', 'Pru', 'Rex', 'Sid', 'Tess', 'Val', 'Wes'];
+const DESKS = { D: 0, S: 1, G: 2, K: 3 };
+const WALK = new Set(['.', 'R', 'L', 'a', 'b']);
+const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const key = (x, y) => x + ',' + y;
+const man = (a, b, x, y) => Math.abs(a - x) + Math.abs(b - y);
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// The floor, drawn once for the left half and mirrored, so neither side has the better office.
+function buildMap() {
+  const W = A.W, H = A.H;
+  const g = Array.from({ length: H }, () => Array(W).fill('.'));
+  const mir = c => (c === 'a' ? 'b' : c);
+  const set = (x, y, c) => { g[y][x] = c; g[y][W - 1 - x] = mir(c); };
+  const hline = (x0, x1, y) => { for (let x = x0; x <= x1; x++) set(x, y, '#'); };
+  const vline = (x, y0, y1) => { for (let y = y0; y <= y1; y++) set(x, y, '#'); };
+  hline(0, 15, 0); hline(0, 15, H - 1); vline(0, 0, H - 1);
+  // your office, top left
+  vline(6, 0, 6); hline(0, 6, 6); set(6, 3, '.'); set(3, 6, '.');
+  // the desk wing, top: Data and Story
+  vline(12, 0, 7); hline(6, 12, 7); set(12, 5, '.'); set(9, 7, '.');
+  set(8, 2, 'D'); set(11, 2, 'S'); set(7, 5, 'C');
+  // the Rock, top middle
+  hline(12, 15, 4); set(15, 4, '.'); set(14, 2, 'R'); set(15, 2, 'R');
+  // the desk wing, bottom: Gadget and Snacks
+  hline(6, 12, 11); vline(12, 11, H - 1); set(9, 11, '.'); set(12, 13, '.');
+  set(8, 16, 'G'); set(11, 16, 'K'); set(7, 12, 'C');
+  // the break room, bottom left
+  vline(6, 11, H - 1); hline(0, 6, 11); set(6, 14, '.'); set(3, 11, '.');
+  // the lobby, and the stream (the water cooler), in the middle
+  set(15, 9, 'L');
+  set(14, 14, '~'); set(15, 14, '~'); set(14, 15, '~'); set(15, 15, '~');
+  set(15, 17, 'C');
+  for (const [x, y] of [[2, 2], [4, 2], [2, 4], [4, 4], [3, 3]]) set(x, y, 'a');
+  return g;
+}
+const SPAWN_N = [[9, 9], [3, 8], [14, 7], [10, 13], [3, 15], [14, 11]];
+
+// Interest is a tug of war: pitching someone the other side has been courting wears that down first.
+function warmRule(cur, curFor, amount, by) {
+  if (curFor !== NONE && curFor !== by && cur > 0) {
+    const left = cur - amount;
+    if (left > 0) return [left, curFor];
+    if (left === 0) return [0, NONE];
+    return [-left, by];
+  }
+  return [cur + amount, by];
+}
+
+class Game {
+  constructor(seed) {
+    this.seed = seed >>> 0;
+    this.rng = mulberry32(this.seed);
+    this.map = buildMap();
+    this.units = []; this.neutrals = []; this.loot = {}; this.stock = {}; this.nextId = 1; this.used = new Set();
+    this.budget = { 0: A.START_BUDGET, 1: A.START_BUDGET };
+    this.crowd = { 0: [], 1: [] };
+    this.rigged = { 0: false, 1: false };
+    this.breaks = { 0: 0, 1: 0 };
+    this.turn = 1; this.side = P; this.log = []; this.over = false; this.winner = NONE; this.how = '';
+    for (let y = 0; y < A.H; y++) for (let x = 0; x < A.W; x++) if (DESKS[this.map[y][x]] !== undefined) this.stock[key(x, y)] = A.DESK_STOCK;
+    const pool = CONSULTANTS.slice();
+    for (let i = pool.length - 1; i > 0; i--) { const j = this.ri(i + 1); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+    this.consultants = pool.slice(0, 4).map(c => ({ ...c, side: NONE, loyalty: 0 }));
+  }
+  r() { return this.rng(); }
+  ri(n) { return Math.floor(this.rng() * n); }
+  pick(a) { return a[this.ri(a.length)]; }
+  say(side, text) { this.log.push({ side, text, turn: this.turn }); }
+  other(s) { return 1 - s; }
+  name() {
+    for (let i = 0; i < 50; i++) { const n = this.pick(NAMES); if (!this.used.has(n)) { this.used.add(n); return n; } }
+    return 'Temp ' + this.nextId;
+  }
+  has(side, id) { return this.consultants.some(c => c.id === id && c.side === side); }
+  tile(x, y) { return x < 0 || y < 0 || x >= A.W || y >= A.H ? '#' : this.map[y][x]; }
+  active(side) { return this.units.filter(u => u.side === side && u.sulk === 0 && !u.gone); }
+  unitAt(x, y) { return this.units.find(u => u.x === x && u.y === y && u.sulk === 0 && !u.gone); }
+  neutralAt(x, y) { return this.neutrals.find(n => n.x === x && n.y === y); }
+  free(x, y) { return WALK.has(this.tile(x, y)) && !this.unitAt(x, y) && !this.neutralAt(x, y); }
+
+  // --- setup ---
+  mkUnit(side, job, stats, leader, kind = 'staff', extra = {}) {
+    const grit = stats[3];
+    const u = {
+      id: this.nextId++, side, job, stats: stats.slice(), leader, kind,
+      name: leader ? (side === P ? 'You' : 'Your nemesis') : kind === 'staff' ? this.name() : extra.name,
+      taste: job >= 0 ? this.pick(ROLE_TASTES[job]) : this.ri(4),
+      max: extra.morale || 6 + 2 * grit + (leader ? 3 : 0), morale: 0, x: -1, y: -1, cards: [], cd: 0,
+      moved: false, acted: false, sulk: 0, rooted: 0, gone: false, expires: extra.expires || 0,
+    };
+    u.morale = u.max;
+    this.units.push(u);
+    return u;
+  }
+  spawnTiles(side) {
+    const out = [];
+    const c = side === P ? 'a' : 'b';
+    for (let y = 0; y < A.H; y++) for (let x = 0; x < A.W; x++) if (this.map[y][x] === c) out.push([x, y]);
+    return out;
+  }
+  placeNear(u, sx, sy) {
+    const seen = new Set([key(sx, sy)]);
+    const q = [[sx, sy]];
+    while (q.length) {
+      const [x, y] = q.shift();
+      if (this.free(x, y)) { u.x = x; u.y = y; return true; }
+      for (const [dx, dy] of DIRS) {
+        const nx = x + dx, ny = y + dy, k = key(nx, ny);
+        if (!seen.has(k) && this.tile(nx, ny) !== '#') { seen.add(k); q.push([nx, ny]); }
+      }
+    }
+    return false;
+  }
+  memberStats(job) {
+    const s = ROLE_STATS[job].slice();
+    const order = [0, 1, 2, 3].sort((a, b) => s[b] - s[a]);
+    s[order[0]]++; s[order[1]]++;
+    return s;
+  }
+  // cfg: {role, stats:[4], party:[jobs]}
+  setup(cfg) {
+    this.jobs = { 0: cfg.role };
+    const nr = this.pick(PLAYABLE);
+    this.jobs[N] = nr;
+    const ns = ROLE_STATS[nr].slice();
+    for (let i = 0; i < A.FREE_POINTS; i++) { let k = this.ri(4); if (ns[k] >= A.STAT_MAX) k = (k + 1) % 4; ns[k]++; }
+    const parties = { 0: cfg.party.slice(), 1: cfg.party.map(() => this.pick(PLAYABLE)) };
+    this.parties = parties;
+    for (const side of [P, N]) {
+      const tiles = this.spawnTiles(side);
+      const lead = this.mkUnit(side, side === P ? cfg.role : nr, side === P ? cfg.stats : ns, true);
+      [lead.x, lead.y] = tiles[0];
+      parties[side].forEach((job, i) => { const u = this.mkUnit(side, job, this.memberStats(job), false); [u.x, u.y] = tiles[i + 1]; });
+    }
+    for (const [x, y] of SPAWN_N) {
+      for (const xx of [x, A.W - 1 - x]) {
+        const role = this.pick([0, 1, 2, 3, 4, 5, 6, 7, 7, 7, 8, 8]);
+        this.neutrals.push({ id: this.nextId++, name: this.name(), role, taste: this.pick(ROLE_TASTES[role]), x: xx, y, amt: 0, for: NONE });
+      }
+    }
+    this.startTurn(P);
+  }
+
+  // --- movement ---
+  moveOf(u) {
+    if (u.rooted > 0) return 0;
+    return 3 + Math.floor(u.stats[2] / 2) + (this.has(u.side, 'agile') ? 1 : 0);
+  }
+  // Tiles this unit can end on, with step counts. Allies can be walked through; enemies and neutrals cannot.
+  reach(u, fromX = u.x, fromY = u.y, range = null) {
+    const mv = range === null ? (u.moved ? 0 : this.moveOf(u)) : range;
+    const dist = { [key(fromX, fromY)]: 0 };
+    const prev = {};
+    const q = [[fromX, fromY]];
+    while (q.length) {
+      const [x, y] = q.shift();
+      const d = dist[key(x, y)];
+      if (d >= mv) continue;
+      for (const [dx, dy] of DIRS) {
+        const nx = x + dx, ny = y + dy, k = key(nx, ny);
+        if (dist[k] !== undefined || !WALK.has(this.tile(nx, ny)) || this.neutralAt(nx, ny)) continue;
+        const o = this.unitAt(nx, ny);
+        if (o && o.side !== u.side) continue;
+        dist[k] = d + 1; prev[k] = key(x, y); q.push([nx, ny]);
+      }
+    }
+    const out = {};
+    for (const k in dist) {
+      const [x, y] = k.split(',').map(Number);
+      const o = this.unitAt(x, y);
+      if (!o || o === u) out[k] = dist[k];
+    }
+    return { tiles: out, prev };
+  }
+  pathTo(u, x, y) {
+    const { prev } = this.reach(u);
+    const out = [];
+    let k = key(x, y);
+    while (k && k !== key(u.x, u.y)) { out.unshift(k.split(',').map(Number)); k = prev[k]; }
+    return out;
+  }
+  moveUnit(u, x, y) {
+    if (u.moved || (x === u.x && y === u.y)) { u.moved = true; return; }
+    const { tiles } = this.reach(u);
+    if (tiles[key(x, y)] === undefined) return;
+    u.from = [u.x, u.y];
+    u.x = x; u.y = y; u.moved = true;
+    this.pickUp(u);
+  }
+  undoMove(u) {
+    if (!u.from || u.acted) return;
+    [u.x, u.y] = u.from; u.from = null; u.moved = false;
+  }
+  pickUp(u) {
+    const k = key(u.x, u.y);
+    const pile = this.loot[k];
+    if (!pile || !pile.length) return 0;
+    let n = 0;
+    while (pile.length && u.cards.length < A.CARRY) { u.cards.push(pile.shift()); n++; }
+    if (!pile.length) delete this.loot[k];
+    if (n) { u.from = null; this.say(u.side, `${u.name} picked up ${n} card${n === 1 ? '' : 's'} off the floor.`); }
+    return n;
+  }
+  adj(x, y) { return DIRS.map(([dx, dy]) => [x + dx, y + dy]); }
+
+  // --- what a unit can do where it stands ---
+  dmgOf(a, d) { return Math.max(1, Math.round(2 + 1.5 * a.stats[0] - 0.75 * d.stats[3])) + (this.has(a.side, 'spin') ? 1 : 0); }
+  counterOf(d, a) { return Math.max(1, Math.floor((Math.max(1, Math.round(2 + 1.5 * d.stats[0] - 0.75 * a.stats[3]))) / 2)); }
+  pickChance(a) { return Math.min(0.85, 0.3 + 0.1 * a.stats[1]); }
+  demand(side) {
+    const d = [0, 0, 0, 0];
+    for (const n of this.crowd[side]) d[n.taste]++;
+    for (const u of this.active(side)) d[u.taste]++;
+    return d;
+  }
+  pitchAmt(u, base = 1) { return base + (u.stats[0] >= 3 ? 1 : 0) + (this.has(u.side, 'hunt') ? 1 : 0); }
+  wouldJoin(n, side, amt) { const r = warmRule(n.amt, n.for, amt, side); return r[1] === side && r[0] >= A.JOIN_AT; }
+
+  actions(u) {
+    const out = [];
+    if (u.acted || u.sulk || u.gone) return out;
+    const other = this.other(u.side);
+    const near = this.adj(u.x, u.y);
+    for (const [x, y] of near) {
+      const e = this.unitAt(x, y);
+      if (e && e.side === other) {
+        const d = this.dmgOf(u, e);
+        out.push({ kind: 'confront', target: e.id, x, y, label: `Argue with ${e.name}`,
+          sub: `${d}–${d + 1} morale off their ${e.morale}${d >= e.morale ? ', breaks them' : `; they answer back for ${this.counterOf(e, u)}`}` });
+        if (e.cards.length) out.push({ kind: 'pickpocket', target: e.id, x, y, label: `Pickpocket ${e.name}`,
+          sub: `${Math.round(100 * this.pickChance(u))}% to lift one of their ${e.cards.length} card${e.cards.length === 1 ? '' : 's'}` });
+      }
+      const t = this.tile(x, y);
+      if (DESKS[t] !== undefined && u.cards.length < A.CARRY && this.stock[key(x, y)] > 0) {
+        out.push({ kind: 'desk', x, y, taste: DESKS[t], label: `Take a ${TASTE[DESKS[t]]} card`, sub: `${this.stock[key(x, y)]} left on this desk; ${this.demand(u.side)[DESKS[t]]} of yours want ${TASTE[DESKS[t]]}` });
+      }
+      if (t === 'C') out.push({ kind: 'closet', x, y, label: 'Raid the supply closet', sub: 'two good slides, quality 2 or 3; first come, first served' });
+      const n = this.neutralAt(x, y);
+      if (n) {
+        const amt = this.pitchAmt(u);
+        out.push({ kind: 'pitch', target: n.id, x, y, label: `Pitch ${n.name}`,
+          sub: `${ROLE_NAME[n.role]}, wants ${TASTE[n.taste]}; ${this.wouldJoin(n, u.side, amt) ? 'joins your crowd' : `warms by ${amt}`}` });
+      }
+    }
+    if (u.cd === 0 && u.job >= 0 && u.kind === 'staff') for (const a of this.abilityTargets(u)) out.push(a);
+    const onL = this.tile(u.x, u.y) === 'L' || near.some(([x, y]) => this.tile(x, y) === 'L');
+    if (onL) {
+      const mine = this.units.filter(v => v.side === u.side && v.kind === 'contractor' && !v.gone).length;
+      for (const c of CONTRACTORS) {
+        if (this.budget[u.side] >= c.price && mine < A.MAX_CONTRACTORS && this.turn < A.TURNS) {
+          out.push({ kind: 'contract', id: c.id, label: `Hire a ${c.name}, $${c.price}`, sub: `${c.what}; stays ${A.CONTRACT_TURNS} turns` });
+        }
+      }
+      for (const c of this.consultants) {
+        if (c.side === u.side) continue;
+        const price = c.side === NONE ? c.price : c.loyalty + 2;
+        if (this.budget[u.side] >= price) {
+          out.push({ kind: 'consult', id: c.id, price, label: `${c.side === NONE ? 'Retain' : 'Poach'} ${c.name}, $${price}`, sub: c.what + (c.side === other ? '; they paid ' + c.loyalty : '') });
+        }
+      }
+    }
+    if (this.tile(u.x, u.y) === 'R') {
+      if (!this.rigged[other] && this.turn < A.TURNS) out.push({ kind: 'rig', label: 'Rig their projector', sub: 'their best slide comes up blank at the final talk, unless they check it' });
+      if (this.rigged[u.side]) out.push({ kind: 'check', label: 'Check your projector', sub: 'it has been rigged; this puts it right' });
+    }
+    out.push({ kind: 'wait', label: 'Hold', sub: 'do nothing more this turn' });
+    return out;
+  }
+
+  abilityTargets(u) {
+    const other = this.other(u.side);
+    const ab = ABILITY[u.job];
+    const within = (list, r) => list.filter(v => man(u.x, u.y, v.x, v.y) <= r);
+    const base = { kind: 'ability', ability: u.job };
+    const out = [];
+    switch (u.job) {
+      case RO.CEO: {
+        const allies = within(this.active(u.side), 3).filter(v => v.morale < v.max);
+        if (allies.length) out.push({ ...base, label: `${ab.name}`, sub: `${allies.length} nearby regain up to 3 morale` });
+        break;
+      }
+      case RO.ENG:
+        if (u.cards.length < A.CARRY) out.push({ ...base, label: ab.name, sub: ab.what });
+        break;
+      case RO.IT:
+        for (const e of within(this.active(other), 4)) out.push({ ...base, target: e.id, x: e.x, y: e.y, label: `${ab.name} ${e.name}`, sub: `2 morale off their ${e.morale}; their ability waits ${A.CD} turns` });
+        break;
+      case RO.HR:
+        for (const v of within(this.active(u.side), 2)) if (v.morale < v.max) out.push({ ...base, target: v.id, x: v.x, y: v.y, label: `${ab.name} ${v === u ? 'yourself' : v.name}`, sub: `back up to ${Math.min(v.max, v.morale + 6)} of ${v.max}` });
+        break;
+      case RO.MKT: {
+        const hit = within(this.active(other), 2);
+        if (hit.length) out.push({ ...base, label: ab.name, sub: `${hit.length} enemy within 2 lose 3 morale each` });
+        break;
+      }
+      case RO.SALES:
+        for (const n of this.neutrals.filter(n => man(u.x, u.y, n.x, n.y) <= 3)) {
+          const amt = this.pitchAmt(u, 2);
+          out.push({ ...base, target: n.id, x: n.x, y: n.y, label: `${ab.name} ${n.name}`, sub: this.wouldJoin(n, u.side, amt) ? 'joins your crowd' : `warms by ${amt}` });
+        }
+        break;
+      case RO.LEGAL:
+        for (const e of within(this.active(other), 4)) if (!e.rooted) out.push({ ...base, target: e.id, x: e.x, y: e.y, label: `${ab.name} on ${e.name}`, sub: 'they cannot move on their next turn' });
+        break;
+      case RO.INTERN: {
+        if (u.cards.length >= A.CARRY) break;
+        const seen = new Set();
+        for (const k in this.stock) {
+          const [x, y] = k.split(',').map(Number);
+          const t = DESKS[this.tile(x, y)];
+          if (this.stock[k] > 0 && man(u.x, u.y, x, y) <= 6 && !seen.has(t)) { seen.add(t); out.push({ ...base, x, y, taste: t, label: `${ab.name} a ${TASTE[t]} card`, sub: `from the desk ${man(u.x, u.y, x, y)} tiles away` }); }
+        }
+        break;
+      }
+    }
+    return out;
+  }
+
+  byId(id) { return this.units.find(v => v.id === id) || this.neutrals.find(v => v.id === id); }
+
+  act(u, a) {
+    if (u.acted) return;
+    u.acted = true; u.moved = true; u.from = null;
+    const other = this.other(u.side);
+    const t = a.target !== undefined ? this.byId(a.target) : null;
+    switch (a.kind) {
+      case 'confront': {
+        let d = this.dmgOf(u, t) + this.ri(2);
+        const crit = this.r() < 0.05 * u.stats[1];
+        if (crit) d *= 2;
+        this.say(u.side, `${u.name} argued with ${t.name}: ${d} morale${crit ? ', a devastating point' : ''}.`);
+        this.hit(t, d, u.side);
+        if (!t.sulk && !t.gone && man(u.x, u.y, t.x, t.y) === 1) {
+          const c = this.counterOf(t, u);
+          this.say(t.side, `${t.name} answered back: ${c}.`);
+          this.hit(u, c, t.side);
+        }
+        break;
+      }
+      case 'pickpocket':
+        if (this.r() < this.pickChance(u) && t.cards.length && u.cards.length < A.CARRY) {
+          const c = t.cards.splice(this.ri(t.cards.length), 1)[0];
+          u.cards.push(c);
+          this.say(u.side, `${u.name} lifted ${c.name} off ${t.name}.`);
+        } else this.say(u.side, `${u.name} tried to pick ${t.name}'s pocket and got nothing.`);
+        break;
+      case 'desk': this.takeFromDesk(u, a.x, a.y); break;
+      case 'closet': {
+        this.map[a.y][a.x] = 'c';
+        const got = [];
+        for (let i = 0; i < 2; i++) { const c = { taste: this.ri(4), q: this.r() < 0.35 ? 3 : 2, name: this.pick(GOLD) }; got.push(c); }
+        for (const c of got) { if (u.cards.length < A.CARRY) u.cards.push(c); else (this.loot[key(u.x, u.y)] ||= []).push(c); }
+        this.say(u.side, `${u.name} raided a supply closet: ${got.map(c => `${c.name} (${TASTE[c.taste]}, q${c.q})`).join(', ')}.`);
+        break;
+      }
+      case 'pitch': this.pitch(u, t, this.pitchAmt(u)); break;
+      case 'ability': this.useAbility(u, a, t); break;
+      case 'contract': {
+        const c = CONTRACTORS.find(c => c.id === a.id);
+        this.budget[u.side] -= c.price;
+        const v = this.mkUnit(u.side, -1, c.stats, false, 'contractor', { name: `${c.name} ${this.nextId}`, morale: c.morale, expires: this.turn + A.CONTRACT_TURNS });
+        const [lx, ly] = this.lobby();
+        this.placeNear(v, lx, ly);
+        v.moved = v.acted = true;
+        this.say(u.side, `${u.name} hired a ${c.name} for $${c.price}.`);
+        break;
+      }
+      case 'consult': {
+        const c = this.consultants.find(c => c.id === a.id);
+        const was = c.side;
+        this.budget[u.side] -= a.price;
+        c.side = u.side; c.loyalty = a.price;
+        this.say(u.side, was === NONE ? `${u.name} retained ${c.name} for $${a.price}.` : `${u.name} poached ${c.name} for $${a.price}.`);
+        break;
+      }
+      case 'rig': this.rigged[other] = true; this.say(u.side, u.side === P ? 'You rigged their projector.' : 'Somebody has been at your projector.'); break;
+      case 'check': this.rigged[u.side] = false; this.say(u.side, `${u.name} checked the projector and put it right.`); break;
+      default: break;
+    }
+    this.checkRout();
+  }
+  lobby() { for (let y = 0; y < A.H; y++) for (let x = 0; x < A.W; x++) if (this.map[y][x] === 'L') return [x, y]; return [15, 9]; }
+  takeFromDesk(u, x, y) {
+    const t = DESKS[this.tile(x, y)];
+    this.stock[key(x, y)]--;
+    const c = { taste: t, q: 1, name: this.pick(PROPS[t]) };
+    u.cards.push(c);
+    this.say(u.side, `${u.name} took ${c.name}.`);
+  }
+  pitch(u, n, amt) {
+    const r = warmRule(n.amt, n.for, amt, u.side);
+    n.amt = r[0]; n.for = r[1];
+    if (n.for === u.side && n.amt >= A.JOIN_AT) {
+      this.neutrals = this.neutrals.filter(x => x !== n);
+      this.crowd[u.side].push(n);
+      this.budget[u.side] += 1;
+      this.say(u.side, `${n.name} (${ROLE_NAME[n.role]}, ${TASTE[n.taste]}) joined ${u.side === P ? 'your' : 'their'} crowd.`);
+    } else this.say(u.side, `${u.name} pitched ${n.name}.`);
+  }
+  useAbility(u, a, t) {
+    u.cd = A.CD;
+    const other = this.other(u.side);
+    switch (u.job) {
+      case RO.CEO: for (const v of this.active(u.side)) if (man(u.x, u.y, v.x, v.y) <= 3) v.morale = Math.min(v.max, v.morale + 3); this.say(u.side, `${u.name} rallied the team.`); break;
+      case RO.ENG: u.cards.push({ taste: 2, q: 2, name: 'a working prototype' }); this.say(u.side, `${u.name} built a prototype.`); break;
+      case RO.IT: t.cd = A.CD; this.say(u.side, `${u.name} jammed ${t.name}.`); this.hit(t, 2, u.side); break;
+      case RO.HR: t.morale = Math.min(t.max, t.morale + 6); this.say(u.side, `${u.name} counselled ${t === u ? 'themself' : t.name}.`); break;
+      case RO.MKT: {
+        const hit = this.active(other).filter(e => man(u.x, u.y, e.x, e.y) <= 2);
+        this.say(u.side, `${u.name} started a rumour. ${hit.length} took it personally.`);
+        for (const e of hit) this.hit(e, 3, u.side);
+        break;
+      }
+      case RO.SALES: this.pitch(u, t, this.pitchAmt(u, 2)); break;
+      case RO.LEGAL: t.rooted = 1; this.say(u.side, `${u.name} served ${t.name} an injunction.`); break;
+      case RO.INTERN: this.takeFromDesk(u, a.x, a.y); break;
+    }
+  }
+  hit(t, d, bySide) {
+    if (t.sulk || t.gone) return;
+    t.morale -= d;
+    if (t.morale > 0) return;
+    t.morale = 0;
+    if (t.cards.length) { (this.loot[key(t.x, t.y)] ||= []).push(...t.cards); }
+    const dropped = t.cards.length;
+    t.cards = [];
+    this.breaks[bySide]++;
+    this.budget[bySide] += 2;
+    if (t.kind === 'contractor') { t.gone = true; this.say(t.side, `${t.name} quit on the spot${dropped ? ', dropping ' + dropped + ' cards' : ''}.`); }
+    else {
+      t.sulk = this.has(t.side, 'pr') ? 1 : A.SULK;
+      this.say(t.side, `${t.name} is demoralised and gone to sulk in the car park${dropped ? `, dropping ${dropped} card${dropped === 1 ? '' : 's'}` : ''}.`);
+    }
+    t.lx = t.x; t.ly = t.y; t.x = -1; t.y = -1;
+  }
+  checkRout() {
+    if (this.over) return;
+    for (const side of [P, N]) {
+      const staff = this.units.filter(u => u.side === side && u.kind === 'staff');
+      if (staff.length && staff.every(u => u.sulk > 0)) {
+        this.over = true; this.winner = this.other(side); this.how = 'rout';
+        this.say(this.other(side), side === N ? 'Their whole party is in the car park. The office is yours.' : 'Your whole party is sulking in the car park. They take the office.');
+      }
+    }
+  }
+
+  // --- turns ---
+  startTurn(side) {
+    this.side = side;
+    this.budget[side] += 1;
+    if (side === P && this.turn > 1 && this.turn % 3 === 1) for (const k in this.stock) this.stock[k] = Math.min(A.DESK_STOCK, this.stock[k] + 1);
+    for (const u of this.units.filter(u => u.side === side && !u.gone)) {
+      u.moved = false; u.acted = false; u.from = null;
+      if (u.cd > 0) u.cd--;
+      if (u.kind === 'contractor' && this.turn >= u.expires) {
+        u.gone = true;
+        if (u.cards.length) (this.loot[key(u.x, u.y)] ||= []).push(...u.cards);
+        u.cards = [];
+        this.say(side, `${u.name}'s contract is up. They left${u.x >= 0 ? ' their cards on the floor' : ''}.`);
+        u.x = u.y = -1;
+        continue;
+      }
+      if (u.sulk > 0) {
+        u.sulk--;
+        if (u.sulk === 0) {
+          const [sx, sy] = this.spawnTiles(side)[0];
+          this.placeNear(u, sx, sy);
+          u.morale = Math.ceil(u.max / 2);
+          this.say(side, `${u.name} is back from the car park, sheepish, at ${u.morale} morale.`);
+        } else { u.moved = u.acted = true; }
+        continue;
+      }
+      if (this.adj(u.x, u.y).some(([x, y]) => this.tile(x, y) === '~') && u.morale < u.max) {
+        u.morale = Math.min(u.max, u.morale + 2);
+      }
+    }
+  }
+  endTurn() {
+    for (const u of this.units) if (u.side === this.side && u.rooted > 0 && u.moved) u.rooted--;
+    for (const u of this.units) if (u.side === this.side && u.rooted > 0 && !u.moved) u.rooted = 0;
+    if (this.side === N) this.turn++;
+    if (this.turn > A.TURNS) return false;
+    this.startTurn(this.other(this.side));
+    return true;
+  }
+
+  // --- the AI: one greedy plan per unit, the same numbers for either side ---
+  goalField(u) {
+    const other = this.other(u.side);
+    const goals = [];
+    const demand = this.demand(u.side);
+    const room = u.cards.length < A.CARRY;
+    for (const k in this.stock) if (this.stock[k] > 0 && room) { const [x, y] = k.split(',').map(Number); goals.push([x, y, 2 + 0.3 * demand[DESKS[this.tile(x, y)]]]); }
+    for (let y = 0; y < A.H; y++) for (let x = 0; x < A.W; x++) if (this.map[y][x] === 'C' && room) goals.push([x, y, 6]);
+    for (const k in this.loot) { const [x, y] = k.split(',').map(Number); goals.push([x, y, 2.5 * this.loot[k].length]); }
+    for (const n of this.neutrals) goals.push([n.x, n.y, 2.2 + (n.for === other ? 0.6 : 0)]);
+    for (const e of this.active(other)) goals.push([e.x, e.y, (u.stats[0] >= 2 ? 4.5 : 2.5) + 4 * (1 - e.morale / e.max) + e.cards.length * 1.2 + (e.leader ? 1 : 0)]);
+    const [lx, ly] = this.lobby();
+    if (this.budget[u.side] >= 5 && this.turn < A.TURNS - 1) goals.push([lx, ly, 3]);
+    if (!this.rigged[other] && this.turn >= 3 && this.turn < A.TURNS) for (let y = 0; y < A.H; y++) for (let x = 0; x < A.W; x++) if (this.map[y][x] === 'R') goals.push([x, y, 2]);
+    if (this.rigged[u.side]) for (let y = 0; y < A.H; y++) for (let x = 0; x < A.W; x++) if (this.map[y][x] === 'R') goals.push([x, y, 4]);
+    const field = new Float32Array(A.W * A.H);
+    for (const [gx, gy, w] of goals) {
+      const d = new Int16Array(A.W * A.H).fill(-1);
+      const q = [];
+      // goals that are furniture or people: start from the walkable tiles next to them
+      if (WALK.has(this.tile(gx, gy)) && !this.neutralAt(gx, gy) && !this.unitAt(gx, gy)) { d[gy * A.W + gx] = 0; q.push([gx, gy]); }
+      else for (const [x, y] of this.adj(gx, gy)) if (WALK.has(this.tile(x, y))) { d[y * A.W + x] = 0; q.push([x, y]); }
+      for (let i = 0; i < q.length; i++) {
+        const [x, y] = q[i];
+        const dd = d[y * A.W + x];
+        const v = w * Math.pow(0.86, dd);
+        if (v > field[y * A.W + x]) field[y * A.W + x] = v;
+        if (dd > 24) continue;
+        for (const [dx, dy] of DIRS) {
+          const nx = x + dx, ny = y + dy;
+          if (!WALK.has(this.tile(nx, ny)) || d[ny * A.W + nx] >= 0) continue;
+          d[ny * A.W + nx] = dd + 1; q.push([nx, ny]);
+        }
+      }
+    }
+    return field;
+  }
+  danger(u, x, y) {
+    let s = 0;
+    for (const e of this.active(this.other(u.side))) {
+      if (man(e.x, e.y, x, y) <= this.moveOf(e) + 1) s += this.dmgOf(e, u) + 0.5;
+    }
+    return s;
+  }
+  actValue(u, a) {
+    const t = a.target !== undefined ? this.byId(a.target) : null;
+    switch (a.kind) {
+      case 'confront': {
+        const d = this.dmgOf(u, t) + 0.5 + 0.05 * u.stats[1] * this.dmgOf(u, t);
+        if (d >= t.morale) return 8 + 2 * t.cards.length + (t.leader ? 4 : 0);
+        const c = this.counterOf(t, u);
+        if (c >= u.morale) return -10;
+        return d * 1.7 + (t.leader ? 1 : 0) - 0.5 * c + (d >= t.morale - 2 ? 1.5 : 0);
+      }
+      case 'pickpocket': return this.pickChance(u) * 3 * (u.cards.length < A.CARRY ? 1 : 0);
+      case 'desk': return 2 + 0.3 * this.demand(u.side)[a.taste];
+      case 'closet': return 6;
+      case 'pitch': return 2 + (this.wouldJoin(t, u.side, this.pitchAmt(u)) ? 3 : 0) + (t.for === this.other(u.side) ? 0.5 : 0);
+      case 'ability':
+        switch (u.job) {
+          case RO.CEO: return this.active(u.side).filter(v => man(u.x, u.y, v.x, v.y) <= 3).reduce((s, v) => s + Math.min(3, v.max - v.morale), 0) * 0.8;
+          case RO.ENG: return 3;
+          case RO.IT: return 2 + (t.cd === 0 ? 2 : 0) + (t.morale <= 2 ? 8 : 0);
+          case RO.HR: return Math.min(6, t.max - t.morale) * 0.8 + (t.leader ? 1 : 0);
+          case RO.MKT: return this.active(this.other(u.side)).filter(e => man(u.x, u.y, e.x, e.y) <= 2).reduce((s, e) => s + (e.morale <= 3 ? 8 : 3), 0);
+          case RO.SALES: return 2.5 + (this.wouldJoin(t, u.side, this.pitchAmt(u, 2)) ? 3 : 0);
+          case RO.LEGAL: return 1.5 + (this.danger(t, t.x, t.y) > 0 ? 1.5 : 0);
+          case RO.INTERN: return 3;
+        }
+        return 0;
+      case 'contract': return this.turn <= A.TURNS - 3 ? 2.5 : 0;
+      case 'consult': return this.turn <= A.TURNS - 2 ? 5 + (a.price > 7 ? -1 : 0) : 0;
+      case 'rig': return this.turn >= 3 ? 3.5 : 1;
+      case 'check': return 5;
+      default: return 0;
+    }
+  }
+  plan(u, policy = 'greedy') {
+    const { tiles } = this.reach(u);
+    const keys = Object.keys(tiles);
+    if (policy === 'random') {
+      const k = this.pick(keys);
+      const [x, y] = k.split(',').map(Number);
+      const ox = u.x, oy = u.y; u.x = x; u.y = y;
+      const acts = this.actions(u);
+      u.x = ox; u.y = oy;
+      return { x, y, act: this.pick(acts) };
+    }
+    const field = this.goalField(u);
+    let best = null, bv = -Infinity;
+    const ox = u.x, oy = u.y;
+    for (const k of keys) {
+      const [x, y] = k.split(',').map(Number);
+      u.x = x; u.y = y;
+      const lootHere = (this.loot[k] || []).length;
+      let pos = 2.5 * Math.min(lootHere, A.CARRY - u.cards.length) + field[y * A.W + x] * 0.35;
+      const dg = this.danger(u, x, y);
+      pos -= dg * (dg >= u.morale ? 0.7 : 0.15) * (u.leader ? 1.6 : 1);
+      if (this.adj(x, y).some(([ax, ay]) => this.tile(ax, ay) === '~')) pos += (u.max - u.morale) * 0.15;
+      for (const a of this.actions(u)) {
+        const v = pos + this.actValue(u, a) + this.r() * 0.05;
+        if (v > bv) { bv = v; best = { x, y, act: a }; }
+      }
+    }
+    u.x = ox; u.y = oy;
+    return best;
+  }
+  // Order a side's units so the ones that can hit something go first.
+  order(side) {
+    return this.active(side).filter(u => !u.acted).sort((a, b) => b.stats[0] - a.stats[0] || a.id - b.id);
+  }
+  playSide(side, policy) {
+    for (const u of this.order(side)) {
+      if (this.over) return;
+      if (u.sulk || u.gone) continue;
+      const p = this.plan(u, policy);
+      if (!p) continue;
+      this.moveUnit(u, p.x, p.y);
+      const a = this.actions(u).find(a => a.kind === p.act.kind && a.target === p.act.target && a.id === p.act.id && a.x === p.act.x && a.y === p.act.y) || { kind: 'wait' };
+      this.act(u, a);
+    }
+  }
+
+  // --- the final talk ---
+  hand(side) { return this.active(side).flatMap(u => u.cards); }
+  startTalk(side) {
+    const other = this.other(side);
+    const audience = [...this.crowd[side].map(n => ({ taste: n.taste, name: n.name })), ...this.active(side).map(u => ({ taste: u.taste, name: u.name }))];
+    const booers = this.active(other);
+    const hand = this.hand(side).map(c => ({ ...c }));
+    const t = { side, audience, booers, hand, played: [], claps: 0, boos: 0, lines: [], heckles: booers.length ? 2 : 0, hecklesDone: 0, pending: false, blanked: null };
+    if (this.rigged[side] && hand.length) {
+      let bi = 0;
+      for (let i = 0; i < hand.length; i++) if (this.slideClaps(t, hand[i]) > this.slideClaps(t, hand[bi])) bi = i;
+      t.blanked = hand[bi];
+      hand[bi] = { taste: -1, q: 0, name: A.DUD };
+    }
+    t.slidesMax = Math.min(A.SLIDES, hand.length);
+    return t;
+  }
+  leader(side) { return this.units.find(u => u.side === side && u.leader); }
+  fans(t, taste) { return t.audience.filter(a => a.taste === taste).length; }
+  slideClaps(t, c) {
+    if (c.taste < 0) return 0;
+    let v = c.q * (2 + 3 * this.fans(t, c.taste)) * (1 + 0.1 * this.leader(t.side).stats[0]);
+    if (c.taste === 0 && this.has(t.side, 'data')) v *= 1.5;
+    return Math.round(v) + (this.has(t.side, 'keynote') ? 3 : 0);
+  }
+  heckleOdds(t) { return Math.min(0.9, 0.55 + 0.05 * this.leader(t.side).stats[3]); }
+  ignoreCost(t) { return Math.max(1, 5 - this.leader(t.side).stats[3]); }
+  playSlide(t, i) {
+    const c = t.hand.splice(i, 1)[0];
+    t.played.push(c);
+    const cl = this.slideClaps(t, c);
+    const b = 2 * t.booers.length + (c.taste < 0 ? 4 : 0);
+    t.claps += cl; t.boos += b;
+    t.lines.push(c.taste < 0 ? `A blank slide. ${b} boos.` : `${c.name} (q${c.q}): ${this.fans(t, c.taste)} wanted ${TASTE[c.taste]}. ${cl} claps${b ? `, ${b} boos` : ''}.`);
+    if (t.hecklesDone < t.heckles && t.played.length >= 2 * t.hecklesDone + 1) t.pending = true;
+  }
+  resolveHeckle(t, back) {
+    t.hecklesDone++; t.pending = false;
+    if (back) {
+      if (this.r() < this.heckleOdds(t)) { t.claps += 10; t.lines.push('Clapped back. The room roars: +10 claps.'); }
+      else { t.boos += 6; t.lines.push('The comeback fell flat: +6 boos.'); }
+    } else { const c = this.ignoreCost(t); t.boos += c; t.lines.push(`Let it go: +${c} boos.`); }
+  }
+  bestSlide(t) {
+    let bi = 0;
+    for (let i = 0; i < t.hand.length; i++) if (this.slideClaps(t, t.hand[i]) > this.slideClaps(t, t.hand[bi])) bi = i;
+    return bi;
+  }
+  finishTalk(t) { t.score = t.claps - t.boos; t.done = true; this.say(t.side, `${t.side === P ? 'Your' : 'Their'} talk: ${t.claps} claps, ${t.boos} boos, ${t.score} all told.`); }
+
+  async run(agent, hooks = {}) {
+    const H = async (k, ...a) => { if (hooks[k]) await hooks[k](...a); };
+    await H('turnStart');
+    while (!this.over) {
+      if (this.side === P) await agent.playTurn(this);
+      else {
+        for (const u of this.order(N)) {
+          if (this.over) break;
+          if (u.sulk || u.gone || u.acted) continue;
+          const p = this.plan(u);
+          if (!p) continue;
+          await H('enemyPlan', u, p);
+          this.moveUnit(u, p.x, p.y);
+          const a = this.actions(u).find(a => a.kind === p.act.kind && a.target === p.act.target && a.id === p.act.id && a.x === p.act.x && a.y === p.act.y) || { kind: 'wait' };
+          this.act(u, a);
+          await H('enemyActed', u, a);
+        }
+      }
+      if (this.over) break;
+      if (!this.endTurn()) break;
+      await H('turnStart');
+    }
+    if (!this.over) {
+      this.over = true;
+      const order = this.crowd[P].length <= this.crowd[N].length ? [N, P] : [P, N];
+      const res = {};
+      for (const side of order) {
+        const t = this.startTalk(side);
+        await H('talkStart', t);
+        while (t.played.length < t.slidesMax) {
+          const i = side === P ? await agent.chooseSlide(t, this) : this.bestSlide(t);
+          this.playSlide(t, i);
+          await H('talkUpdate', t);
+          if (t.pending) {
+            this.resolveHeckle(t, side === P ? await agent.chooseHeckle(t, this) : false);
+            await H('talkUpdate', t);
+          }
+        }
+        this.finishTalk(t);
+        res[side] = t.score;
+        await H('talkEnd', t);
+      }
+      this.how = 'talk';
+      this.winner = res[P] > res[N] ? P : res[N] > res[P] ? N : this.crowd[P].length > this.crowd[N].length ? P : this.crowd[N].length > this.crowd[P].length ? N : NONE;
+      this.scores = res;
+    }
+    await H('matchEnd');
+    return { winner: this.winner, how: this.how, scores: this.scores, breaks: this.breaks, crowd: [this.crowd[P].length, this.crowd[N].length] };
+  }
+}
+if (typeof module !== 'undefined') module.exports = { Game, A, P, N, NONE, RO, PLAYABLE, ROLE_STATS, buildMap };
+// ==/ENGINE==

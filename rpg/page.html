@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The Outdoor Office</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+/*__STYLE__*/
+<style>
+.table { grid-template-columns: minmax(0, 1fr) 400px; }
+.bar { height: 7px; border: 1.5px solid var(--ink); border-radius: 2px; background: #fff; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--you); }
+.bar.them i { background: var(--them); }
+.unit h3 { font-family: var(--hand); font-size: 30px; line-height: 1; margin: 0; }
+.unit .job { color: var(--ink-soft); font-size: 13px; margin: 2px 0 6px; }
+.stats4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; text-align: center; margin: 6px 0; }
+.stats4 div { border: 1.5px solid var(--ink); border-radius: 3px; background: #fff; font-size: 11px; }
+.stats4 b { display: block; font-family: var(--hand); font-size: 22px; line-height: 1; }
+.abil { font-size: 13px; margin: 6px 0; }
+.abil b { font-family: var(--hand); font-size: 20px; }
+.ctl { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.ctl .btn { font-size: 21px; padding: 7px 14px; }
+.roster { display: flex; flex-direction: column; gap: 4px; }
+.rrow { display: grid; grid-template-columns: 1fr 90px auto; gap: 8px; align-items: center; background: none; border: 0; text-align: left; padding: 2px 4px; cursor: pointer; border-radius: 3px; font-size: 13px; }
+.rrow:hover, .rrow.on { background: #fff6fb; }
+.rrow.done { color: var(--ink-soft); }
+.rrow small { color: var(--ink-soft); }
+.cons { font-size: 13px; }
+.cons li { margin: 2px 0; }
+.cons ul { margin: 4px 0 0; padding-left: 18px; }
+.mv.attack .l { color: var(--you); }
+</style>
+</head>
+<body>
+<div class="table">
+  <section class="pad" aria-label="The office floor">
+    <header class="gum">
+      <h1>The Outdoor Office</h1>
+      <span class="where" id="where"></span>
+      <div class="score" id="score"></div>
+    </header>
+    <svg id="board" viewBox="0 0 1000 620" role="img" aria-label="Floor plan of the office with both parties on it"></svg>
+    <div class="legend" id="legend"></div>
+  </section>
+  <aside class="col">
+    <div class="idx status" id="status"></div>
+    <div class="idx moves" id="unitcard"></div>
+    <div class="idx" id="rostercard"></div>
+    <div class="idx minutes">
+      <h2>Minutes</h2>
+      <ol id="log" aria-live="polite"></ol>
+      <details>
+        <summary>How it plays</summary>
+        <p>Your party and theirs share one office for twelve turns. On your turn each of your people may move and then do one thing: argue with an enemy next to them, take a card from a desk, raid a supply closet, pitch a neutral, use their job's ability, hire help in the Lobby, or rig the projector at the Rock.</p>
+        <p>Arguing costs morale. At zero a unit is demoralised: they drop their cards on the floor and sulk in the car park for three turns. Put their whole party in the car park at once and you win on the spot.</p>
+        <p>Otherwise, after twelve turns both leaders give a final talk using every card their party still holds. Each slide lands in proportion to how many in your crowd and your party want its taste, times its quality. Their people in the room boo. Best score takes the office.</p>
+        <p>Money comes in every turn, and for every break and every recruit. Contractors are cheap, fight for you and leave after four turns. Consultants cost more, give your side a standing rule, and can be poached by the other side for two more than you paid.</p>
+      </details>
+    </div>
+  </aside>
+</div>
+<div class="veil" id="veil" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+<div class="banner" id="banner" aria-hidden="true"></div>
+
+<script>
+/*__ENGINE__*/
+</script>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const YOU = '#b8322a', THEM = '#2a5db0', INK = '#1f2440', PAD = '#fbf1a9', HI = '#ff9fd2';
+const CS = 32, OX = 4, OY = 6;
+const RELAX = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const sleep = ms => new Promise(r => setTimeout(r, RELAX ? Math.min(ms, 120) : ms));
+const SHORT = ['CEO', 'Eng', 'IT', 'HR', 'Mkt', 'Sal', 'Law', 'Int', 'Stf'];
+const HECKLES = ['Could have been an email!', 'Is this going to be on the test?', 'Next slide, please!', 'Who signed off on this?',
+  'We tried that in 2019.', 'Does it scale, though?', 'Louder for the people at the water cooler!'];
+const LABELS = [[3, 1, 'Your office'], [27, 1, 'Their office'], [9, 1, 'Data & Story'], [21, 1, 'Story & Data'],
+  [15, 1, 'The Rock'], [9, 17, 'Gadget & Snacks'], [21, 17, 'Snacks & Gadget'], [3, 12, 'Break room'], [27, 12, 'Break room'],
+  [15, 8, 'Lobby'], [15, 12, 'Water cooler']];
+
+let G = null;
+const UI = { turn: null, sel: null, hover: null, plan: null, seen: 0 };
+const cx = x => OX + x * CS + CS / 2, cy = y => OY + y * CS + CS / 2;
+
+function banner(text, ms = 1100) {
+  const b = $('#banner'); b.textContent = text; b.classList.add('on');
+  return sleep(ms).then(() => b.classList.remove('on'));
+}
+function unitTitle(u) {
+  return `${u.name}, ${u.kind === 'contractor' ? 'contractor' : ROLE_NAME[u.job]}${u.leader ? ' (leader)' : ''}. Morale ${u.morale}/${u.max}. ` +
+    `Charm ${u.stats[0]}, Guile ${u.stats[1]}, Hustle ${u.stats[2]}, Grit ${u.stats[3]}. Wants ${TASTE[u.taste]}. Carrying ${u.cards.length}.`;
+}
+
+// --- the floor ---------------------------------------------------------------
+function drawBoard() {
+  const sel = UI.sel ? G.byId(UI.sel) : null;
+  const mine = UI.turn && sel && sel.side === P;
+  const reach = mine && !sel.moved ? G.reach(sel).tiles : {};
+  const W = A.W, H = A.H;
+  let s = `<defs>
+    <filter id="pen" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" seed="4"/><feDisplacementMap in="SourceGraphic" scale="2"/></filter>
+    <pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(40)"><line x1="0" y1="0" x2="0" y2="7" stroke="${INK}" stroke-width="3"/></pattern>
+    <pattern id="waves" width="16" height="8" patternUnits="userSpaceOnUse"><path d="M0 4 Q4 0 8 4 T16 4" fill="none" stroke="${THEM}" stroke-width="1.6"/></pattern>
+  </defs>`;
+  for (let y = 8; y < 620; y += 24) s += `<line x1="0" x2="1000" y1="${y}" y2="${y}" stroke="#9cc3d9" stroke-width="1" opacity=".6"/>`;
+  // floor features
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const t = G.map[y][x], X = OX + x * CS, Y = OY + y * CS;
+    if (t === 'a' || t === 'b') s += `<rect x="${X}" y="${Y}" width="${CS}" height="${CS}" fill="${t === 'a' ? YOU : THEM}" opacity=".08"/>`;
+    if (t === 'R') s += `<rect x="${X + 1}" y="${Y + 1}" width="${CS - 2}" height="${CS - 2}" fill="#d9cfa0" stroke="${INK}" stroke-width="1"/>`;
+    if (t === 'L') s += `<circle cx="${X + 16}" cy="${Y + 16}" r="12" fill="#fff" stroke="${INK}" stroke-width="1.6"/><text x="${X + 16}" y="${Y + 22}" text-anchor="middle" class="hand" font-size="20" font-weight="700" fill="${INK}">$</text>`;
+    if (reach[key(x, y)] !== undefined) s += `<rect x="${X + 2}" y="${Y + 2}" width="${CS - 4}" height="${CS - 4}" fill="${HI}" opacity=".45" class="tile" data-x="${x}" data-y="${y}"/>`;
+  }
+  // walls, as one inked path
+  let wp = '';
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (G.map[y][x] === '#') wp += `M${OX + x * CS} ${OY + y * CS}h${CS}v${CS}h-${CS}z`;
+  s += `<path d="${wp}" fill="url(#hatch)" stroke="${INK}" stroke-width="1.2" filter="url(#pen)"/>`;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const t = G.map[y][x], X = OX + x * CS, Y = OY + y * CS;
+    if (t === '~') s += `<rect x="${X}" y="${Y}" width="${CS}" height="${CS}" fill="#cfe3f3"/><rect x="${X}" y="${Y}" width="${CS}" height="${CS}" fill="url(#waves)"/>`;
+    if (DESKS[t] !== undefined) {
+      const st = G.stock[key(x, y)];
+      s += `<g><title>${TASTE[DESKS[t]]} desk, ${st} card${st === 1 ? '' : 's'} left</title><rect x="${X + 2}" y="${Y + 3}" width="${CS - 4}" height="${CS - 6}" fill="#fff" stroke="${INK}" stroke-width="2" filter="url(#pen)"/>
+        <text x="${X + 16}" y="${Y + 20}" text-anchor="middle" font-size="15" fill="${INK}">${TASTE_GLYPH[DESKS[t]]}</text>`;
+      for (let i = 0; i < st; i++) s += `<circle cx="${X + 9 + i * 7}" cy="${Y + 26}" r="2.2" fill="${INK}"/>`;
+      s += `</g>`;
+    }
+    if (t === 'C' || t === 'c') s += `<g><title>${t === 'C' ? 'Supply closet: two good slides inside' : 'An emptied supply closet'}</title><rect x="${X + 2}" y="${Y + 2}" width="${CS - 4}" height="${CS - 4}" fill="${t === 'C' ? '#fff3c4' : 'none'}" stroke="${INK}" stroke-width="2" ${t === 'c' ? 'stroke-dasharray="3 3"' : ''}/>
+      ${t === 'C' ? `<text x="${X + 16}" y="${Y + 22}" text-anchor="middle" font-size="16" fill="${INK}">★</text>` : ''}</g>`;
+  }
+  for (const [x, y, l] of LABELS) s += `<text class="hand" x="${cx(x)}" y="${OY + y * CS + 11}" text-anchor="middle" font-size="17" fill="${INK}" opacity=".55">${l}</text>`;
+  // loot on the floor
+  for (const k in G.loot) {
+    const [x, y] = k.split(',').map(Number), X = OX + x * CS, Y = OY + y * CS;
+    s += `<g><title>${G.loot[k].length} card${G.loot[k].length === 1 ? '' : 's'} on the floor: ${esc(G.loot[k].map(c => c.name).join(', '))}</title>`;
+    for (let i = 0; i < Math.min(3, G.loot[k].length); i++) s += `<rect x="${X + 7 + i * 3}" y="${Y + 6 + i * 3}" width="14" height="18" fill="#fff" stroke="${INK}" stroke-width="1.5" transform="rotate(${-8 + i * 8} ${X + 16} ${Y + 16})"/>`;
+    s += `</g>`;
+  }
+  // the path of the move being planned
+  const path = UI.plan || (UI.hover && UI.hover.path) || [];
+  if (path.length > 1) s += `<polyline points="${path.map(([x, y]) => `${cx(x)},${cy(y)}`).join(' ')}" fill="none" stroke="${UI.plan ? THEM : YOU}" stroke-width="4" stroke-dasharray="7 5" stroke-linecap="round" opacity=".8"/>`;
+  if (UI.hover && UI.hover.x !== undefined) s += `<rect x="${OX + UI.hover.x * CS}" y="${OY + UI.hover.y * CS}" width="${CS}" height="${CS}" fill="none" stroke="${YOU}" stroke-width="3" stroke-dasharray="4 3"/>`;
+  // neutrals
+  for (const n of G.neutrals) {
+    const X = cx(n.x), Y = cy(n.y);
+    s += `<g><title>${esc(n.name)}, ${ROLE_NAME[n.role]}. Wants ${TASTE[n.taste]}.${n.amt ? ` Warming to ${n.for === P ? 'you' : 'them'} (${n.amt} of ${A.JOIN_AT}).` : ''}</title>
+      <circle cx="${X}" cy="${Y}" r="10" fill="#fffdf6" stroke="${INK}" stroke-width="1.4"/>`;
+    if (n.amt > 0) s += `<circle cx="${X}" cy="${Y}" r="13" fill="none" stroke="${n.for === P ? YOU : THEM}" stroke-width="3" stroke-dasharray="${(n.amt / A.JOIN_AT) * 81.7} 99"/>`;
+    s += `<text x="${X}" y="${Y + 4}" text-anchor="middle" font-size="11" fill="${INK}">${TASTE_GLYPH[n.taste]}</text></g>`;
+  }
+  // units
+  for (const u of G.units) {
+    if (u.sulk || u.gone || u.x < 0) continue;
+    const X = cx(u.x), Y = cy(u.y), c = u.side === P ? YOU : THEM;
+    const spent = u.side === G.side && u.acted;
+    const isSel = sel === u;
+    s += `<g class="unit" data-id="${u.id}" style="cursor:pointer" opacity="${spent ? 0.5 : 1}"><title>${esc(unitTitle(u))}</title>`;
+    if (isSel) s += `<circle cx="${X}" cy="${Y}" r="17" fill="${HI}"/>`;
+    if (u.kind === 'contractor') s += `<rect x="${X - 12}" y="${Y - 12}" width="24" height="24" rx="4" fill="${c}" stroke="${INK}" stroke-width="2"/>`;
+    else s += `<circle cx="${X}" cy="${Y}" r="13" fill="${c}" stroke="${INK}" stroke-width="${u.leader ? 3.5 : 2}"/>`;
+    if (u.leader) s += `<circle cx="${X}" cy="${Y}" r="9.5" fill="none" stroke="#fff" stroke-width="1.2"/>`;
+    s += `<text x="${X}" y="${Y + 4}" text-anchor="middle" font-size="${u.kind === 'contractor' ? 9 : 10}" font-weight="700" fill="#fff">${u.kind === 'contractor' ? u.name.slice(0, 3) : SHORT[u.job]}</text>`;
+    const f = u.morale / u.max;
+    s += `<rect x="${X - 13}" y="${Y + 14}" width="26" height="4" fill="#fff" stroke="${INK}" stroke-width=".8"/><rect x="${X - 13}" y="${Y + 14}" width="${26 * f}" height="4" fill="${f < 0.34 ? '#e06a2a' : c}"/>`;
+    if (u.cards.length) s += `<rect x="${X + 8}" y="${Y - 16}" width="10" height="12" fill="#fff" stroke="${INK}" stroke-width="1"/><text x="${X + 13}" y="${Y - 7}" text-anchor="middle" font-size="9" fill="${INK}">${u.cards.length}</text>`;
+    if (u.rooted) s += `<text x="${X - 15}" y="${Y - 8}" font-size="12" fill="${INK}">⛓</text>`;
+    s += `</g>`;
+  }
+  const svg = $('#board');
+  svg.innerHTML = s;
+  svg.querySelectorAll('.tile').forEach(el => el.addEventListener('click', () => {
+    if (!UI.turn || !sel) return;
+    G.moveUnit(sel, +el.dataset.x, +el.dataset.y);
+    render();
+  }));
+  svg.querySelectorAll('.unit').forEach(el => el.addEventListener('click', e => {
+    e.stopPropagation();
+    const u = G.byId(+el.dataset.id);
+    if (UI.turn && sel && sel.side === P && !sel.acted && u.side === N) {
+      const a = G.actions(sel).find(a => a.kind === 'confront' && a.target === u.id);
+      if (a) { doAct(sel, a); return; }
+    }
+    if (UI.turn && sel && sel.side === P && !sel.moved && u === sel) return;
+    UI.sel = u.id; render();
+  }));
+}
+
+function legend() {
+  $('#legend').innerHTML = `<span><svg width="26" height="26" viewBox="-13 -13 26 26"><circle r="11" fill="${YOU}" stroke="${INK}" stroke-width="3"/></svg>your leader</span>
+    <span><svg width="26" height="26" viewBox="-13 -13 26 26"><circle r="11" fill="${THEM}" stroke="${INK}" stroke-width="2"/></svg>their people</span>
+    <span><svg width="26" height="26" viewBox="-13 -13 26 26"><rect x="-10" y="-10" width="20" height="20" rx="3" fill="${YOU}" stroke="${INK}" stroke-width="2"/></svg>contractor</span>
+    <span><svg width="26" height="26" viewBox="-13 -13 26 26"><circle r="9" fill="#fffdf6" stroke="${INK}"/><circle r="11.5" fill="none" stroke="${YOU}" stroke-width="3" stroke-dasharray="36 99"/></svg>neutral, warming to you</span>
+    <span><svg width="26" height="26" viewBox="0 0 26 26"><rect x="5" y="4" width="14" height="18" fill="#fff" stroke="${INK}" stroke-width="1.5"/></svg>loot on the floor</span>
+    <span>★ supply closet &nbsp; $ hire help &nbsp; ${TASTE.map((t, i) => `${TASTE_GLYPH[i]} ${t}`).join(', ')}</span>`;
+}
+
+// --- the side column ---------------------------------------------------------
+function render() {
+  if (!G || !G.jobs) return;
+  drawBoard();
+  const a = G.active(P).length, b = G.active(N).length;
+  $('#score').innerHTML = `<span class="y">you $${G.budget[P]} <small>${G.crowd[P].length} in crowd</small></span><span class="t">them $${G.budget[N]} <small>${G.crowd[N].length} in crowd</small></span>`;
+  $('#where').textContent = G.over ? 'Match over' : `Turn ${G.turn} of ${A.TURNS}`;
+  const d = G.demand(P);
+  const own = c => G.consultants.filter(x => x.side === c);
+  const flags = [];
+  if (G.rigged[P]) flags.push('Your projector is rigged. Get someone to the Rock and check it');
+  if (G.rigged[N]) flags.push('You rigged their projector');
+  $('#status').innerHTML = `<h2>${UI.turn ? 'Your turn' : G.side === N ? 'Their turn' : 'The office'}</h2>
+    <p class="who">${a} of yours on the floor, ${b} of theirs. You hold ${G.hand(P).length} cards between you; they hold ${G.hand(N).length}.</p>
+    <p>Your crowd and party want</p>
+    <div class="wants">${TASTE.map((t, i) => `<div><b>${d[i]}</b><span>${TASTE_GLYPH[i]} ${t}</span></div>`).join('')}</div>
+    <div class="cons"><b>Consultants</b><ul>${G.consultants.map(c => `<li>${esc(c.name)}: ${c.side === P ? '<b>yours</b>' : c.side === N ? `<span style="color:${THEM}">theirs, paid $${c.loyalty}</span>` : `free, $${c.price}`}. <span class="who">${esc(c.what)}.</span></li>`).join('')}</ul></div>
+    ${flags.length ? `<p class="flags">${flags.map(esc).join('. ')}.</p>` : ''}`;
+  renderUnit();
+  renderRoster();
+  const log = G.log.slice(-60).reverse();
+  const fresh = G.log.length - UI.seen;
+  $('#log').innerHTML = log.map((e, i) => `<li class="s${e.side} ${i < fresh ? 'new' : ''}">${esc(e.text)}</li>`).join('');
+  UI.seen = G.log.length;
+}
+
+function renderUnit() {
+  const card = $('#unitcard');
+  const u = UI.sel ? G.byId(UI.sel) : null;
+  if (!u || u.sulk || u.gone) {
+    card.innerHTML = `<h2>${UI.turn ? 'Pick someone' : 'Watching'}</h2><p class="waiting">${UI.turn ? 'Click one of your people on the floor.' : 'Their party is moving…'}</p>
+      ${UI.turn ? `<div class="ctl"><button class="btn" id="endturn">End turn</button></div>` : ''}`;
+    const e = $('#endturn'); if (e) e.onclick = endTurn;
+    return;
+  }
+  const mine = u.side === P;
+  const ab = u.kind === 'staff' && u.job >= 0 ? ABILITY[u.job] : null;
+  let h = `<div class="unit"><h3 style="color:${mine ? YOU : THEM}">${esc(u.name)}</h3>
+    <p class="job">${u.kind === 'contractor' ? `Contractor, leaves after turn ${u.expires - 1}` : ROLE_NAME[u.job]}${u.leader ? ', leader' : ''}. Wants ${TASTE[u.taste]}. Moves ${G.moveOf(u)}.</p>
+    <div class="bar ${mine ? '' : 'them'}"><i style="width:${100 * u.morale / u.max}%"></i></div><p class="who">Morale ${u.morale} of ${u.max}</p>
+    <div class="stats4">${STAT_NAME.map((n, i) => `<div><b>${u.stats[i]}</b>${n}</div>`).join('')}</div>
+    ${ab ? `<p class="abil"><b>${ab.name}</b>: ${esc(ab.what)}. ${u.cd ? `Ready in ${u.cd} turn${u.cd === 1 ? '' : 's'}.` : 'Ready.'}</p>` : ''}
+    <div class="chips">${u.cards.length ? u.cards.map(c => `<span class="chip">${TASTE_GLYPH[c.taste]} ${esc(c.name)} <small>q${c.q}</small></span>`).join('') : '<span class="who">No cards.</span>'}</div></div>`;
+  let acts = [];
+  if (UI.turn && mine) {
+    if (u.acted) h += `<p class="waiting">Done for this turn.</p>`;
+    else {
+      acts = G.actions(u);
+      if (!u.moved) h += `<p class="who">Click a pink tile to move, or act from here.</p>`;
+      h += `<div class="cards">${acts.map((o, i) => `<button class="mv ${o.kind === 'confront' ? 'attack' : ''} ${['rig', 'pickpocket'].includes(o.kind) ? 'trick' : ''}" data-i="${i}"><span class="l">${esc(o.label)}</span><span class="st"></span><span class="s">${esc(o.sub)}</span></button>`).join('')}</div>`;
+    }
+    h += `<div class="ctl">${u.from && !u.acted ? '<button class="btn alt" id="undo">Undo move</button>' : ''}<button class="btn" id="endturn">End turn</button></div>`;
+  }
+  card.innerHTML = h;
+  card.querySelectorAll('.mv').forEach(btn => {
+    const o = acts[+btn.dataset.i];
+    btn.onclick = () => doAct(u, o);
+    const on = () => { UI.hover = o.x !== undefined ? { x: o.x, y: o.y } : null; drawBoard(); };
+    btn.onmouseenter = on; btn.onfocus = on;
+    btn.onmouseleave = () => { UI.hover = null; drawBoard(); };
+  });
+  const un = $('#undo'); if (un) un.onclick = () => { G.undoMove(u); render(); };
+  const e = $('#endturn'); if (e) e.onclick = endTurn;
+}
+
+function renderRoster() {
+  const row = u => {
+    const where = u.gone ? 'gone' : u.sulk ? `sulking, back in ${u.sulk}` : `${u.morale}/${u.max}`;
+    return `<button class="rrow ${UI.sel === u.id ? 'on' : ''} ${(u.side === P && UI.turn && u.acted) || u.sulk ? 'done' : ''}" data-id="${u.id}" ${u.sulk || u.gone ? 'disabled' : ''}>
+      <span>${esc(u.name)} <small>${u.kind === 'contractor' ? 'contractor' : ROLE_NAME[u.job]}${u.cards.length ? `, ${u.cards.length} card${u.cards.length === 1 ? '' : 's'}` : ''}</small></span>
+      <span class="bar ${u.side === P ? '' : 'them'}"><i style="width:${100 * u.morale / u.max}%"></i></span><small>${where}</small></button>`;
+  };
+  const list = s => G.units.filter(u => u.side === s && !u.gone);
+  $('#rostercard').innerHTML = `<h2>The parties</h2><div class="roster">${list(P).map(row).join('')}</div>
+    <p class="who" style="margin:8px 0 4px">Theirs</p><div class="roster">${list(N).map(row).join('')}</div>`;
+  $('#rostercard').querySelectorAll('.rrow').forEach(b => b.onclick = () => { UI.sel = +b.dataset.id; render(); });
+}
+
+function nextUnit() {
+  const next = G.active(P).find(v => !v.acted);
+  UI.sel = next ? next.id : null;
+}
+function doAct(u, o) {
+  UI.hover = null;
+  G.act(u, o);
+  if (!G.over) nextUnit();
+  render();
+  if (G.over && UI.turn) { const r = UI.turn; UI.turn = null; r(); }
+}
+function endTurn() {
+  if (!UI.turn) return;
+  const r = UI.turn; UI.turn = null; UI.sel = null; r();
+}
+
+// --- sheets -------------------------------------------------------------------
+function sheet(html, wire) {
+  $('#sheet').innerHTML = html;
+  $('#veil').hidden = false;
+  if (wire) wire($('#sheet'));
+  const f = $('#sheet').querySelector('button:not(:disabled)'); if (f) f.focus({ preventScroll: true });
+}
+function closeSheet() { $('#veil').hidden = true; $('#sheet').innerHTML = ''; }
+
+function setupFlow() {
+  return new Promise(done => {
+    const cfg = { role: 0, stats: [0, 0, 0, 0], party: [] };
+    let base = [0, 0, 0, 0];
+    const pageJob = () => sheet(`<h2>Who are you?</h2>
+      <p>You lead a party through the office for twelve turns: arguing their people down, looting desks and closets, winning the crowd over. Then a final talk decides it, unless you break their whole party first.</p>
+      <div class="jobs">${PLAYABLE.map(r => `<button class="job" data-r="${r}"><b>${ROLE_NAME[r]}</b>
+        <small>${ABILITY[r].name}: ${esc(ABILITY[r].what)}</small><small>Wants ${ROLE_TASTES[r].map(t => TASTE[t]).join(' or ')}</small>
+        <small>${ROLE_STATS[r].map((v, i) => `${STAT_NAME[i]} ${v}`).join(', ')}</small></button>`).join('')}</div>`,
+      el => el.querySelectorAll('.job').forEach(b => b.onclick = () => { cfg.role = +b.dataset.r; base = ROLE_STATS[cfg.role].slice(); cfg.stats = base.slice(); pageStats(); }));
+    const pageStats = () => {
+      const left = A.FREE_POINTS - cfg.stats.reduce((a, v, i) => a + v - base[i], 0);
+      sheet(`<h2>${ROLE_NAME[cfg.role]}. Spend four points.</h2>
+        ${STAT_NAME.map((n, i) => `<div class="stat"><b>${n}</b><small>${STAT_WHAT[i]}</small>
+          <button class="pm" data-i="${i}" data-d="-1" aria-label="less ${n}" ${cfg.stats[i] <= base[i] ? 'disabled' : ''}>−</button>
+          <span class="v">${cfg.stats[i]}</span>
+          <button class="pm" data-i="${i}" data-d="1" aria-label="more ${n}" ${left <= 0 || cfg.stats[i] >= A.STAT_MAX ? 'disabled' : ''}>+</button></div>`).join('')}
+        <p style="margin-top:10px">${left} point${left === 1 ? '' : 's'} left. Morale is ${9 + 2 * cfg.stats[3]}; you move ${3 + Math.floor(cfg.stats[2] / 2)} tiles.</p>
+        <div class="row"><button class="btn alt" id="back">Pick another job</button><button class="btn" id="next">Choose your party</button></div>`,
+        el => {
+          el.querySelectorAll('.pm').forEach(b => b.onclick = () => { cfg.stats[+b.dataset.i] += +b.dataset.d; pageStats(); });
+          el.querySelector('#back').onclick = pageJob;
+          el.querySelector('#next').onclick = pageParty;
+        });
+    };
+    const pageParty = () => sheet(`<h2>Who fights beside you?</h2>
+      <p>Up to four colleagues, each a unit you move, with their job's ability. Your nemesis brings as many as you do.</p>
+      <div class="jobs">${PLAYABLE.map(r => `<button class="job" data-r="${r}" ${cfg.party.length >= 4 ? 'disabled' : ''}><b>+ ${ROLE_NAME[r]}</b><small>${ABILITY[r].name}: ${esc(ABILITY[r].what)}</small></button>`).join('')}</div>
+      <h3>Your party</h3><div class="chips">${cfg.party.length ? cfg.party.map((r, i) => `<button class="chip" data-x="${i}" aria-label="remove ${ROLE_NAME[r]}">${ROLE_NAME[r]} ✕</button>`).join('') : '<span class="who">Just you so far. One break and you are out.</span>'}</div>
+      <div class="row"><button class="btn alt" id="back">Back to stats</button><button class="btn" id="go">Into the office</button></div>`,
+      el => {
+        el.querySelectorAll('.job').forEach(b => b.onclick = () => { if (cfg.party.length < 4) cfg.party.push(+b.dataset.r); pageParty(); });
+        el.querySelectorAll('[data-x]').forEach(b => b.onclick = () => { cfg.party.splice(+b.dataset.x, 1); pageParty(); });
+        el.querySelector('#back').onclick = pageStats;
+        el.querySelector('#go').onclick = () => { closeSheet(); done(cfg); };
+      });
+    pageJob();
+  });
+}
+
+function talkSheet(t, mode, resolve) {
+  const mine = t.side === P;
+  const fans = TASTE.map((_, i) => G.fans(t, i));
+  const tot = Math.max(t.claps + t.boos, 1);
+  let body = `<h2>${mine ? 'Your final talk' : 'Their final talk'}</h2>
+    <p>In the room: ${t.audience.length} on ${mine ? 'your' : 'their'} side, ${t.booers.length} of ${mine ? 'theirs' : 'yours'} here to boo.${t.blanked ? ` The projector was rigged: ${esc(t.blanked.name)} is now a blank slide.` : ''}</p>
+    <div class="wants">${TASTE.map((n, i) => `<div><b>${fans[i]}</b><span>${TASTE_GLYPH[i]} ${n}</span></div>`).join('')}</div>
+    <div class="meter ${mine ? '' : 'them'}"><div class="c" style="width:${100 * t.claps / tot}%"></div><div class="b" style="width:${100 * t.boos / tot}%"></div></div>
+    <div class="tally">${t.claps} claps, ${t.boos} boos</div>
+    ${t.lines.length ? `<ol class="lines">${t.lines.map(l => `<li>${esc(l)}</li>`).join('')}</ol>` : ''}`;
+  let wire = null;
+  if (mode === 'slide') {
+    body += `<h3>Slide ${t.played.length + 1} of ${t.slidesMax}</h3><div class="row">${t.hand.map((c, i) => `<button class="slide" data-i="${i}">
+      <b>${c.taste >= 0 ? TASTE_GLYPH[c.taste] + ' ' : ''}${esc(c.name)}</b>
+      <small>${c.taste < 0 ? 'blank; boos' : `quality ${c.q}; ${fans[c.taste]} want ${TASTE[c.taste]}; about ${G.slideClaps(t, c)} claps`}</small></button>`).join('')}</div>`;
+    wire = el => el.querySelectorAll('.slide').forEach(b => b.onclick = () => resolve(+b.dataset.i));
+  } else if (mode === 'heckle') {
+    const who = t.booers[Math.floor(Math.random() * t.booers.length)];
+    body += `<p class="heckle">${who ? esc(who.name) + ': ' : ''}“${esc(HECKLES[Math.floor(Math.random() * HECKLES.length)])}”</p>
+      <div class="row"><button class="btn alt" id="ign">Let it go, +${G.ignoreCost(t)} boos</button><button class="btn" id="cb">Clap back, ${Math.round(100 * G.heckleOdds(t))}% to land</button></div>
+      <p class="who" style="margin-top:8px">Landing is +10 claps. Missing is +6 boos.</p>`;
+    wire = el => { el.querySelector('#ign').onclick = () => resolve(false); el.querySelector('#cb').onclick = () => resolve(true); };
+  } else if (mode === 'end') {
+    body += `<h3>${t.score} all told</h3><div class="row"><button class="btn" id="ok">${mine ? 'Their turn at the Rock' : 'The verdict'}</button></div>`;
+    wire = el => el.querySelector('#ok').onclick = () => { closeSheet(); resolve(); };
+  }
+  sheet(body, wire);
+}
+
+function verdict() {
+  return new Promise(res => {
+    const w = G.winner;
+    const head = w === P ? 'You take the office.' : w === N ? 'Your nemesis takes the office.' : 'Dead level.';
+    const why = G.how === 'rout' ? (w === P ? 'Their entire party is sulking in the car park at once.' : 'Your entire party is sulking in the car park at once.')
+      : `Final talks: you ${G.scores[P]}, them ${G.scores[N]}.`;
+    sheet(`<h2>${head}</h2><p>${why}</p>
+      <table class="rc"><thead><tr><th></th><th style="color:${YOU}">You</th><th style="color:${THEM}">Them</th></tr></thead><tbody>
+      <tr><td>Enemies broken</td><td>${G.breaks[P]}</td><td>${G.breaks[N]}</td></tr>
+      <tr><td>Crowd won over</td><td>${G.crowd[P].length}</td><td>${G.crowd[N].length}</td></tr>
+      <tr><td>Cards held at the end</td><td>${G.hand(P).length}</td><td>${G.hand(N).length}</td></tr>
+      <tr><td>Consultants retained</td><td>${G.consultants.filter(c => c.side === P).length}</td><td>${G.consultants.filter(c => c.side === N).length}</td></tr>
+      </tbody></table><div class="row"><button class="btn" id="ok">Play again</button></div>`,
+      el => el.querySelector('#ok').onclick = () => { closeSheet(); res(); });
+  });
+}
+
+// --- wiring ---------------------------------------------------------------------
+const agent = {
+  playTurn() { return new Promise(res => { UI.turn = res; nextUnit(); render(); }); },
+  chooseSlide(t) { return new Promise(res => talkSheet(t, 'slide', res)); },
+  chooseHeckle(t) { return new Promise(res => talkSheet(t, 'heckle', res)); },
+};
+const hooks = {
+  async turnStart() {
+    UI.sel = null; render();
+    await banner(G.side === P ? `Turn ${G.turn}` : 'Their turn', G.side === P ? 900 : 600);
+  },
+  async enemyPlan(u, p) {
+    UI.sel = u.id;
+    const path = G.pathTo(u, p.x, p.y);
+    UI.plan = [[u.x, u.y], ...path];
+    render();
+    await sleep(420);
+    UI.plan = null;
+  },
+  async enemyActed() { render(); await sleep(380); },
+  async talkStart(t) { render(); if (t.side === N) { talkSheet(t, 'watch'); await sleep(900); } },
+  async talkUpdate(t) { if (t.side === N) { talkSheet(t, 'watch'); await sleep(700); } },
+  async talkEnd(t) { await new Promise(res => talkSheet(t, 'end', res)); },
+  async matchEnd() { render(); await verdict(); start(); },
+};
+
+async function start() {
+  G = new Game((Date.now() ^ (Math.random() * 1e9)) >>> 0);
+  Object.assign(UI, { turn: null, sel: null, hover: null, plan: null, seen: 0 });
+  const cfg = await setupFlow();
+  G.setup(cfg);
+  G.say(NONE, `Your nemesis is ${ROLE_NAME[G.jobs[N]]}, with ${G.parties[N].map(r => ROLE_NAME[r]).join(', ') || 'nobody'}.`);
+  render();
+  G.run(agent, hooks);
+}
+legend();
+start();
+</script>
+</body>
+</html>

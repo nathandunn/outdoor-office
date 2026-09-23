@@ -150,30 +150,55 @@ table.rc { border-collapse: collapse; width: 100%; font-size: 15px; margin-top: 
 .banner.on { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .banner { transition: none; } }
 </style>
+<style>
+.table { grid-template-columns: minmax(0, 1fr) 400px; }
+.bar { height: 7px; border: 1.5px solid var(--ink); border-radius: 2px; background: #fff; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--you); }
+.bar.them i { background: var(--them); }
+.unit h3 { font-family: var(--hand); font-size: 30px; line-height: 1; margin: 0; }
+.unit .job { color: var(--ink-soft); font-size: 13px; margin: 2px 0 6px; }
+.stats4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; text-align: center; margin: 6px 0; }
+.stats4 div { border: 1.5px solid var(--ink); border-radius: 3px; background: #fff; font-size: 11px; }
+.stats4 b { display: block; font-family: var(--hand); font-size: 22px; line-height: 1; }
+.abil { font-size: 13px; margin: 6px 0; }
+.abil b { font-family: var(--hand); font-size: 20px; }
+.ctl { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.ctl .btn { font-size: 21px; padding: 7px 14px; }
+.roster { display: flex; flex-direction: column; gap: 4px; }
+.rrow { display: grid; grid-template-columns: 1fr 90px auto; gap: 8px; align-items: center; background: none; border: 0; text-align: left; padding: 2px 4px; cursor: pointer; border-radius: 3px; font-size: 13px; }
+.rrow:hover, .rrow.on { background: #fff6fb; }
+.rrow.done { color: var(--ink-soft); }
+.rrow small { color: var(--ink-soft); }
+.cons { font-size: 13px; }
+.cons li { margin: 2px 0; }
+.cons ul { margin: 4px 0 0; padding-left: 18px; }
+.mv.attack .l { color: var(--you); }
+</style>
 </head>
 <body>
 <div class="table">
-  <section class="pad" aria-label="The board">
+  <section class="pad" aria-label="The office floor">
     <header class="gum">
       <h1>The Outdoor Office</h1>
       <span class="where" id="where"></span>
       <div class="score" id="score"></div>
     </header>
-    <svg id="board" viewBox="0 0 1000 720" role="img" aria-label="Floor plan of the office: rooms joined by corridors"></svg>
+    <svg id="board" viewBox="0 0 1000 620" role="img" aria-label="Floor plan of the office with both parties on it"></svg>
     <div class="legend" id="legend"></div>
   </section>
   <aside class="col">
     <div class="idx status" id="status"></div>
-    <div class="idx moves"><h2 id="movesTitle">Your move</h2><div id="filter" class="filter"></div><div class="cards" id="cards"></div></div>
+    <div class="idx moves" id="unitcard"></div>
+    <div class="idx" id="rostercard"></div>
     <div class="idx minutes">
       <h2>Minutes</h2>
       <ol id="log" aria-live="polite"></ol>
       <details>
         <summary>How it plays</summary>
-        <p>Three rounds. Each round you and your nemesis take turns, four moves each, then both of you present at the Rock. Whoever ends with the most people who would clap for them wins; points break ties.</p>
-        <p>A move is: walk up to your steps along the corridors, then act in that room. The room the other side stands in can't be entered or walked through.</p>
-        <p>Desks give you a card of their taste and make nearby people curious; the curious drift to the Stream, where you close them. Every card is either a slide at your talk or the price of buying one of their people who wants it.</p>
-        <p>The side that's behind moves second, so it gets the last word in a round.</p>
+        <p>Your party and theirs share one office for twelve turns. On your turn each of your people may move and then do one thing: argue with an enemy next to them, take a card from a desk, raid a supply closet, pitch a neutral, use their job's ability, hire help in the Lobby, or rig the projector at the Rock.</p>
+        <p>Arguing costs morale. At zero a unit is demoralised: they drop their cards on the floor and sulk in the car park for three turns. Put their whole party in the car park at once and you win on the spot.</p>
+        <p>Otherwise, after twelve turns both leaders give a final talk using every card their party still holds. Each slide lands in proportion to how many in your crowd and your party want its taste, times its quality. Their people in the room boo. Best score takes the office.</p>
+        <p>Money comes in every turn, and for every break and every recruit. Contractors are cheap, fight for you and leave after four turns. Consultants cost more, give your side a standing rule, and can be poached by the other side for two more than you paid.</p>
       </details>
     </div>
   </aside>
@@ -182,7 +207,7 @@ table.rc { border-collapse: collapse; width: 100%; font-size: 15px; margin-top: 
 <div class="banner" id="banner" aria-hidden="true"></div>
 
 <script>
-// ==ENGINE== pure rules, no DOM. Same file is inlined into the page and run headless by sim.js.
+// ==ENGINE== The Outdoor Office, party battle. Pure rules, no DOM; the page and sim.js both run this file.
 const TASTE = ['Data', 'Story', 'Gadget', 'Snacks'];
 const TASTE_GLYPH = ['#', '¶', '⚙', '☕'];
 const PROPS = [
@@ -191,40 +216,50 @@ const PROPS = [
   ['the prototype', 'a live demo', 'a shiny widget', 'the headset'],
   ['a box of donuts', 'the cheese plate', 'cold brew', 'a pizza'],
 ];
+const GOLD = ['the board deck', 'the leaked roadmap', 'the award photo', 'the viral clip', 'the secret sauce', 'the 10x chart'];
 const RO = { CEO: 0, ENG: 1, IT: 2, HR: 3, MKT: 4, SALES: 5, LEGAL: 6, INTERN: 7, STAFF: 8 };
 const ROLE_NAME = ['CEO', 'Engineer', 'IT', 'HR', 'Marketing', 'Sales', 'Legal', 'Intern', 'Staff'];
 const ROLE_TASTES = [[0, 1], [0, 2], [2], [1], [1, 2], [3, 2], [0], [3], [0, 1, 2, 3]];
 // charm, guile, hustle, grit
 const ROLE_STATS = [[2, 1, 0, 1], [0, 1, 1, 2], [0, 2, 1, 1], [2, 0, 0, 2], [2, 2, 0, 0], [1, 1, 2, 0], [0, 2, 0, 2], [1, 0, 2, 1]];
-const ROLE_RULE = [
-  'one more seat at your talks',
-  'Data and Gadget slides land an extra clap per fan',
-  'your projector cannot be rigged',
-  'their bullies are turned away at the door',
-  'your rumours cool twice as hard',
-  'buy from a step further; the stream closes three',
-  'your cards cannot be pinched',
-  'desks warm one more; interns take any card',
-];
 const PLAYABLE = [0, 1, 2, 3, 4, 5, 6, 7];
 const STAT_NAME = ['Charm', 'Guile', 'Hustle', 'Grit'];
-const STAT_WHAT = ['+12% claps a point', 'rumours cool harder, tricks worth more', '+1 step every two points', 'shrugs off 4 boos a point'];
-const K = { NEUTRAL: 0, FOLLOWER: 1, WAGE: 2, INFLUENCER: 3, LOVER: 4, HATER: 5, BULLY: 6 };
-const KIND_NAME = ['neutral', 'follower', 'wage slave', 'influencer', 'lover', 'hater', 'bully'];
+const STAT_WHAT = ['hits harder in an argument, lands slides', 'crits, pickpocketing', '+1 move every two points', 'more morale, takes less'];
+const ABILITY = [
+  { name: 'Rally', what: 'allies within 3 tiles regain 3 morale' },
+  { name: 'Prototype', what: 'build a Gadget slide, quality 2' },
+  { name: 'Jam', what: 'an enemy within 4 loses 2 morale and their ability goes on cooldown' },
+  { name: 'Counsel', what: 'an ally within 2, or yourself, regains 6 morale' },
+  { name: 'Rumour', what: 'every enemy within 2 tiles loses 3 morale' },
+  { name: 'Pitch', what: 'a neutral within 3 warms to you by 2' },
+  { name: 'Injunction', what: 'an enemy within 4 cannot move on their next turn' },
+  { name: 'Fetch', what: 'take a card from any desk within 6 tiles' },
+];
+const CONSULTANTS = [
+  { id: 'data', name: 'The Data Whisperer', price: 6, what: 'Data slides land half again as hard at the final talk' },
+  { id: 'spin', name: 'Spin Doctor', price: 6, what: '+1 damage on every argument you start' },
+  { id: 'agile', name: 'Agile Coach', price: 7, what: '+1 move for all your units' },
+  { id: 'pr', name: 'Crisis PR', price: 5, what: 'your demoralised come back after 1 turn, not 3' },
+  { id: 'hunt', name: 'Headhunter', price: 5, what: 'every pitch warms one more' },
+  { id: 'keynote', name: 'Keynote Coach', price: 6, what: '+3 claps a slide at the final talk' },
+];
+const CONTRACTORS = [
+  { id: 'runner', name: 'Runner', stats: [0, 1, 5, 1], morale: 7, price: 3, what: 'fast legs, weak argument; fetches loot' },
+  { id: 'heavy', name: 'Heavy', stats: [3, 0, 1, 3], morale: 11, price: 4, what: 'slow, loud, hard to shout down' },
+];
 const P = 0, N = 1, NONE = -1;
 const A = {
-  ROUNDS: 3, MOVES: 4, SLIDES: 3, WARM_COUNT: 3, WARM_AMOUNT: 1.0, CURIOUS_AT: 2.0, CUR_MAX: 3.0,
-  STREAM_CLOSE: 2, RUMOUR_CHILL: 1.0, BULLY_FROM: 2, UNDERDOG: 1, FREE_POINTS: 4, STAT_MAX: 5,
-  NEUTRALS: 12, WARM_RANGE: 2, DUD: 'a blank slide',
+  TURNS: 12, W: 31, H: 19, SULK: 3, CD: 3, CARRY: 4, SLIDES: 5, JOIN_AT: 2, DESK_STOCK: 3,
+  START_BUDGET: 3, CONTRACT_TURNS: 4, MAX_CONTRACTORS: 2, FREE_POINTS: 4, STAT_MAX: 5, DUD: 'a blank slide',
 };
-const claps = k => k === K.FOLLOWER || k === K.INFLUENCER || k === K.LOVER;
-const flippable = k => k === K.FOLLOWER || k === K.INFLUENCER;
-const booKind = k => k === K.HATER || k === K.BULLY;
-const hecklesFor = r => [1, 2, 2][r - 1] || 2;
-const perHeads = r => (r >= 3 ? 2 : 3);
 const NAMES = ['Ada', 'Bram', 'Cleo', 'Dev', 'Esme', 'Finn', 'Gus', 'Hana', 'Ines', 'Jo', 'Kit', 'Lars', 'Mina', 'Ned',
   'Opal', 'Pip', 'Quinn', 'Rosa', 'Sol', 'Tam', 'Uma', 'Vic', 'Wren', 'Xavi', 'Yara', 'Zed', 'Bea', 'Cal', 'Dot',
   'Eli', 'Flo', 'Hal', 'Ivy', 'Jem', 'Lou', 'Max', 'Nia', 'Ozzy', 'Pru', 'Rex', 'Sid', 'Tess', 'Val', 'Wes'];
+const DESKS = { D: 0, S: 1, G: 2, K: 3 };
+const WALK = new Set(['.', 'R', 'L', 'a', 'b']);
+const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const key = (x, y) => x + ',' + y;
+const man = (a, b, x, y) => Math.abs(a - x) + Math.abs(b - y);
 
 function mulberry32(a) {
   return function () {
@@ -235,684 +270,709 @@ function mulberry32(a) {
   };
 }
 
-// --- the board: rooms and corridors ------------------------------------------
-const ROOMS = {
-  'desk:0': { name: 'Data desk', short: 'Data desk', plan: [0.13, 0.36], taste: 0 },
-  'desk:1': { name: 'Story desk', short: 'Story desk', plan: [0.34, 0.36], taste: 1 },
-  'desk:2': { name: 'Gadget desk', short: 'Gadget desk', plan: [0.34, 0.62], taste: 2 },
-  'desk:3': { name: 'Snacks desk', short: 'Snacks desk', plan: [0.13, 0.62], taste: 3 },
-  stream: { name: 'Stream', short: 'Stream', plan: [0.72, 0.84] },
-  break: { name: 'Break room', short: 'Break room', plan: [0.87, 0.46] },
-  rock: { name: 'The Rock', short: 'The Rock', plan: [0.55, 0.12] },
-  lobby: { name: 'Lobby', short: 'Lobby', plan: [0.58, 0.52] },
-};
-const EDGES = [
-  ['desk:0', 'desk:1', 1], ['desk:1', 'desk:2', 1], ['desk:0', 'desk:3', 1], ['desk:3', 'desk:1', 1],
-  ['desk:2', 'lobby', 1], ['desk:3', 'stream', 2], ['lobby', 'stream', 1], ['lobby', 'break', 1],
-  ['lobby', 'rock', 2], ['stream', 'break', 2], ['stream', 'rock', 2], ['break', 'rock', 2], ['rock', 'desk:2', 2],
-];
-const ADJ = {};
-for (const id in ROOMS) ADJ[id] = [];
-for (const [a, b, c] of EDGES) { ADJ[a].push([b, c]); ADJ[b].push([a, c]); }
-const HOME_ROOMS = ['desk:0', 'desk:1', 'desk:2', 'desk:3', 'stream', 'break', 'lobby'];
-
-function distances(from, blocked = []) {
-  const d = { [from]: 0 };
-  const open = [from];
-  while (open.length) {
-    let bi = 0;
-    for (let i = 1; i < open.length; i++) if (d[open[i]] < d[open[bi]]) bi = i;
-    const u = open.splice(bi, 1)[0];
-    for (const [v, c] of ADJ[u]) {
-      if (blocked.includes(v)) continue;
-      const nd = d[u] + c;
-      if (d[v] === undefined || nd < d[v]) { d[v] = nd; if (!open.includes(v)) open.push(v); }
-    }
-  }
-  return d;
+// The floor, drawn once for the left half and mirrored, so neither side has the better office.
+function buildMap() {
+  const W = A.W, H = A.H;
+  const g = Array.from({ length: H }, () => Array(W).fill('.'));
+  const mir = c => (c === 'a' ? 'b' : c);
+  const set = (x, y, c) => { g[y][x] = c; g[y][W - 1 - x] = mir(c); };
+  const hline = (x0, x1, y) => { for (let x = x0; x <= x1; x++) set(x, y, '#'); };
+  const vline = (x, y0, y1) => { for (let y = y0; y <= y1; y++) set(x, y, '#'); };
+  hline(0, 15, 0); hline(0, 15, H - 1); vline(0, 0, H - 1);
+  // your office, top left
+  vline(6, 0, 6); hline(0, 6, 6); set(6, 3, '.'); set(3, 6, '.');
+  // the desk wing, top: Data and Story
+  vline(12, 0, 7); hline(6, 12, 7); set(12, 5, '.'); set(9, 7, '.');
+  set(8, 2, 'D'); set(11, 2, 'S'); set(7, 5, 'C');
+  // the Rock, top middle
+  hline(12, 15, 4); set(15, 4, '.'); set(14, 2, 'R'); set(15, 2, 'R');
+  // the desk wing, bottom: Gadget and Snacks
+  hline(6, 12, 11); vline(12, 11, H - 1); set(9, 11, '.'); set(12, 13, '.');
+  set(8, 16, 'G'); set(11, 16, 'K'); set(7, 12, 'C');
+  // the break room, bottom left
+  vline(6, 11, H - 1); hline(0, 6, 11); set(6, 14, '.'); set(3, 11, '.');
+  // the lobby, and the stream (the water cooler), in the middle
+  set(15, 9, 'L');
+  set(14, 14, '~'); set(15, 14, '~'); set(14, 15, '~'); set(15, 15, '~');
+  set(15, 17, 'C');
+  for (const [x, y] of [[2, 2], [4, 2], [2, 4], [4, 4], [3, 3]]) set(x, y, 'a');
+  return g;
 }
+const SPAWN_N = [[9, 9], [3, 8], [14, 7], [10, 13], [3, 15], [14, 11]];
 
-function pathTo(from, to, blocked = []) {
-  const d = distances(from, blocked);
-  if (d[to] === undefined) return [];
-  const out = [to];
-  let cur = to;
-  let guard = 0;
-  while (cur !== from && guard++ < 20) {
-    let found = false;
-    for (const [v, c] of ADJ[cur]) {
-      if (d[v] !== undefined && d[v] + c === d[cur] && !blocked.includes(v)) { out.unshift(v); cur = v; found = true; break; }
-    }
-    if (!found) break;
-  }
-  return out; // includes from
-}
-
-// Interest is a tug of war: warming somebody the other side courted wears them down first.
+// Interest is a tug of war: pitching someone the other side has been courting wears that down first.
 function warmRule(cur, curFor, amount, by) {
   if (curFor !== NONE && curFor !== by && cur > 0) {
     const left = cur - amount;
     if (left > 0) return [left, curFor];
     if (left === 0) return [0, NONE];
-    return [Math.min(-left, A.CUR_MAX), by];
+    return [-left, by];
   }
-  if (amount < 0) return [Math.max(cur + amount, 0), cur + amount > 0 ? curFor : NONE];
-  return [Math.min(cur + amount, A.CUR_MAX), by];
+  return [cur + amount, by];
 }
 
 class Game {
   constructor(seed) {
     this.seed = seed >>> 0;
     this.rng = mulberry32(this.seed);
-    this.people = []; this.nextId = 1; this.usedNames = new Set();
-    this.round = 1; this.move = 1;
-    this.pos = { 0: 'stream', 1: 'break' };
-    this.satchel = { 0: [], 1: [] };
-    this.points = { 0: 0, 1: 0 }; this.clapsTotal = { 0: 0, 1: 0 }; this.boosTotal = { 0: 0, 1: 0 };
-    this.presented = { 0: false, 1: false }; this.rigged = { 0: false, 1: false }; this.sablog = { 0: [], 1: [] };
-    this.roles = { 0: RO.STAFF, 1: RO.STAFF }; this.stats = { 0: [1, 1, 1, 1], 1: [1, 1, 1, 1] }; this.parties = { 0: [], 1: [] };
-    this.lastFirst = N; this.lastLeader = NONE; this.leadChanges = 0; this.startFlip = false;
-    this.log = []; this.over = false; this.first = P; this.roundCard = null;
-    this.resetRoundStats();
+    this.map = buildMap();
+    this.units = []; this.neutrals = []; this.loot = {}; this.stock = {}; this.nextId = 1; this.used = new Set();
+    this.budget = { 0: A.START_BUDGET, 1: A.START_BUDGET };
+    this.crowd = { 0: [], 1: [] };
+    this.rigged = { 0: false, 1: false };
+    this.breaks = { 0: 0, 1: 0 };
+    this.turn = 1; this.side = P; this.log = []; this.over = false; this.winner = NONE; this.how = '';
+    for (let y = 0; y < A.H; y++) for (let x = 0; x < A.W; x++) if (DESKS[this.map[y][x]] !== undefined) this.stock[key(x, y)] = A.DESK_STOCK;
+    const pool = CONSULTANTS.slice();
+    for (let i = pool.length - 1; i > 0; i--) { const j = this.ri(i + 1); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+    this.consultants = pool.slice(0, 4).map(c => ({ ...c, side: NONE, loyalty: 0 }));
   }
   r() { return this.rng(); }
   ri(n) { return Math.floor(this.rng() * n); }
   pick(a) { return a[this.ri(a.length)]; }
-  say(side, text) { this.log.push({ side, text, round: this.round, move: this.move }); }
+  say(side, text) { this.log.push({ side, text, turn: this.turn }); }
   other(s) { return 1 - s; }
-  stat(s, i) { return this.stats[s][i]; }
-  has(s, role) { return this.people.some(p => p.side === s && p.role === role && claps(p.kind)); }
-  count(s) { let n = 0; for (const p of this.people) if (p.side === s && claps(p.kind)) n++; return n; }
-  isCurious(p) { return p.kind === K.NEUTRAL && p.curiosity >= A.CURIOUS_AT; }
-  isCuriousFor(p, s) { return this.isCurious(p) && p.curiousFor === s; }
-  steps(s) { return 2 + Math.floor(this.stat(s, 2) / 2); }
-  resetRoundStats() {
-    this.roundStats = { 0: { claps: 0, boos: 0, gained: 0, lost: 0 }, 1: { claps: 0, boos: 0, gained: 0, lost: 0 } };
+  name() {
+    for (let i = 0; i < 50; i++) { const n = this.pick(NAMES); if (!this.used.has(n)) { this.used.add(n); return n; } }
+    return 'Temp ' + this.nextId;
   }
+  has(side, id) { return this.consultants.some(c => c.id === id && c.side === side); }
+  tile(x, y) { return x < 0 || y < 0 || x >= A.W || y >= A.H ? '#' : this.map[y][x]; }
+  active(side) { return this.units.filter(u => u.side === side && u.sulk === 0 && !u.gone); }
+  unitAt(x, y) { return this.units.find(u => u.x === x && u.y === y && u.sulk === 0 && !u.gone); }
+  neutralAt(x, y) { return this.neutrals.find(n => n.x === x && n.y === y); }
+  free(x, y) { return WALK.has(this.tile(x, y)) && !this.unitAt(x, y) && !this.neutralAt(x, y); }
 
-  pickName() {
-    for (let i = 0; i < 40; i++) { const n = this.pick(NAMES); if (!this.usedNames.has(n)) { this.usedNames.add(n); return n; } }
-    const f = 'Colleague ' + (this.usedNames.size + 1); this.usedNames.add(f); return f;
+  // --- setup ---
+  mkUnit(side, job, stats, leader, kind = 'staff', extra = {}) {
+    const grit = stats[3];
+    const u = {
+      id: this.nextId++, side, job, stats: stats.slice(), leader, kind,
+      name: leader ? (side === P ? 'You' : 'Your nemesis') : kind === 'staff' ? this.name() : extra.name,
+      taste: job >= 0 ? this.pick(ROLE_TASTES[job]) : this.ri(4),
+      max: extra.morale || 6 + 2 * grit + (leader ? 3 : 0), morale: 0, x: -1, y: -1, cards: [], cd: 0,
+      moved: false, acted: false, sulk: 0, rooted: 0, gone: false, expires: extra.expires || 0,
+    };
+    u.morale = u.max;
+    this.units.push(u);
+    return u;
   }
-  randomRole() {
-    const w = [1, 2, 2, 2, 2, 2, 2, 5, 4];
-    let t = this.r() * w.reduce((a, b) => a + b, 0);
-    for (let i = 0; i < w.length; i++) { t -= w[i]; if (t < 0) return i; }
-    return RO.STAFF;
+  spawnTiles(side) {
+    const out = [];
+    const c = side === P ? 'a' : 'b';
+    for (let y = 0; y < A.H; y++) for (let x = 0; x < A.W; x++) if (this.map[y][x] === c) out.push([x, y]);
+    return out;
   }
-  addPerson(kind, side, room, role = -1) {
-    const r = role >= 0 ? role : this.randomRole();
-    const p = { id: this.nextId++, name: this.pickName(), kind, side, room, home: room, role: r,
-      taste: this.pick(ROLE_TASTES[r]), curiosity: 0, curiousFor: NONE, resolve: false };
-    this.people.push(p);
-    return p;
+  placeNear(u, sx, sy) {
+    const seen = new Set([key(sx, sy)]);
+    const q = [[sx, sy]];
+    while (q.length) {
+      const [x, y] = q.shift();
+      if (this.free(x, y)) { u.x = x; u.y = y; return true; }
+      for (const [dx, dy] of DIRS) {
+        const nx = x + dx, ny = y + dy, k = key(nx, ny);
+        if (!seen.has(k) && this.tile(nx, ny) !== '#') { seen.add(k); q.push([nx, ny]); }
+      }
+    }
+    return false;
   }
-
-  // cfg: {role, stats:[4], party:[roles]}
+  memberStats(job) {
+    const s = ROLE_STATS[job].slice();
+    const order = [0, 1, 2, 3].sort((a, b) => s[b] - s[a]);
+    s[order[0]]++; s[order[1]]++;
+    return s;
+  }
+  // cfg: {role, stats:[4], party:[jobs]}
   setup(cfg) {
-    this.roles[P] = cfg.role; this.stats[P] = cfg.stats.slice(); this.parties[P] = cfg.party.slice();
+    this.jobs = { 0: cfg.role };
     const nr = this.pick(PLAYABLE);
-    this.roles[N] = nr;
+    this.jobs[N] = nr;
     const ns = ROLE_STATS[nr].slice();
-    for (let i = 0; i < A.FREE_POINTS; i++) {
-      let k = this.ri(4);
-      if (ns[k] >= A.STAT_MAX) k = (k + 1) % 4;
-      ns[k]++;
-    }
-    this.stats[N] = ns;
-    this.parties[N] = this.parties[P].map(() => this.pick(PLAYABLE));
-
+    for (let i = 0; i < A.FREE_POINTS; i++) { let k = this.ri(4); if (ns[k] >= A.STAT_MAX) k = (k + 1) % 4; ns[k]++; }
+    const parties = { 0: cfg.party.slice(), 1: cfg.party.map(() => this.pick(PLAYABLE)) };
+    this.parties = parties;
     for (const side of [P, N]) {
-      this.addPerson(K.HATER, side, this.pick(HOME_ROOMS));
-      for (const r of this.parties[side]) this.addPerson(K.FOLLOWER, side, this.pick(HOME_ROOMS), r);
+      const tiles = this.spawnTiles(side);
+      const lead = this.mkUnit(side, side === P ? cfg.role : nr, side === P ? cfg.stats : ns, true);
+      [lead.x, lead.y] = tiles[0];
+      parties[side].forEach((job, i) => { const u = this.mkUnit(side, job, this.memberStats(job), false); [u.x, u.y] = tiles[i + 1]; });
     }
-    let ceo = false;
-    for (let i = 0; i < A.NEUTRALS; i++) {
-      const q = this.addPerson(K.NEUTRAL, NONE, this.pick(HOME_ROOMS));
-      if (q.role === RO.CEO) { if (ceo) { q.role = RO.STAFF; q.taste = this.pick(ROLE_TASTES[RO.STAFF]); } ceo = true; }
+    for (const [x, y] of SPAWN_N) {
+      for (const xx of [x, A.W - 1 - x]) {
+        const role = this.pick([0, 1, 2, 3, 4, 5, 6, 7, 7, 7, 8, 8]);
+        this.neutrals.push({ id: this.nextId++, name: this.name(), role, taste: this.pick(ROLE_TASTES[role]), x: xx, y, amt: 0, for: NONE });
+      }
     }
-    this.startFlip = this.r() < 0.5;
-    this.placeForRound();
+    this.startTurn(P);
   }
 
-  placeForRound() {
-    const swap = (this.round % 2 === 0) !== this.startFlip;
-    this.pos = { 0: swap ? 'break' : 'stream', 1: swap ? 'stream' : 'break' };
+  // --- movement ---
+  moveOf(u) {
+    if (u.rooted > 0) return 0;
+    return 3 + Math.floor(u.stats[2] / 2) + (this.has(u.side, 'agile') ? 1 : 0);
   }
-
-  reachFrom(s, here, extra = 0) {
-    const d = distances(here, [this.pos[this.other(s)]]);
+  // Tiles this unit can end on, with step counts. Allies can be walked through; enemies and neutrals cannot.
+  reach(u, fromX = u.x, fromY = u.y, range = null) {
+    const mv = range === null ? (u.moved ? 0 : this.moveOf(u)) : range;
+    const dist = { [key(fromX, fromY)]: 0 };
+    const prev = {};
+    const q = [[fromX, fromY]];
+    while (q.length) {
+      const [x, y] = q.shift();
+      const d = dist[key(x, y)];
+      if (d >= mv) continue;
+      for (const [dx, dy] of DIRS) {
+        const nx = x + dx, ny = y + dy, k = key(nx, ny);
+        if (dist[k] !== undefined || !WALK.has(this.tile(nx, ny)) || this.neutralAt(nx, ny)) continue;
+        const o = this.unitAt(nx, ny);
+        if (o && o.side !== u.side) continue;
+        dist[k] = d + 1; prev[k] = key(x, y); q.push([nx, ny]);
+      }
+    }
     const out = {};
-    for (const id in d) if (d[id] <= this.steps(s) + extra) out[id] = d[id];
+    for (const k in dist) {
+      const [x, y] = k.split(',').map(Number);
+      const o = this.unitAt(x, y);
+      if (!o || o === u) out[k] = dist[k];
+    }
+    return { tiles: out, prev };
+  }
+  pathTo(u, x, y) {
+    const { prev } = this.reach(u);
+    const out = [];
+    let k = key(x, y);
+    while (k && k !== key(u.x, u.y)) { out.unshift(k.split(',').map(Number)); k = prev[k]; }
+    return out;
+  }
+  moveUnit(u, x, y) {
+    if (u.moved || (x === u.x && y === u.y)) { u.moved = true; return; }
+    const { tiles } = this.reach(u);
+    if (tiles[key(x, y)] === undefined) return;
+    u.from = [u.x, u.y];
+    u.x = x; u.y = y; u.moved = true;
+    this.pickUp(u);
+  }
+  undoMove(u) {
+    if (!u.from || u.acted) return;
+    [u.x, u.y] = u.from; u.from = null; u.moved = false;
+  }
+  pickUp(u) {
+    const k = key(u.x, u.y);
+    const pile = this.loot[k];
+    if (!pile || !pile.length) return 0;
+    let n = 0;
+    while (pile.length && u.cards.length < A.CARRY) { u.cards.push(pile.shift()); n++; }
+    if (!pile.length) delete this.loot[k];
+    if (n) { u.from = null; this.say(u.side, `${u.name} picked up ${n} card${n === 1 ? '' : 's'} off the floor.`); }
+    return n;
+  }
+  adj(x, y) { return DIRS.map(([dx, dy]) => [x + dx, y + dy]); }
+
+  // --- what a unit can do where it stands ---
+  dmgOf(a, d) { return Math.max(1, Math.round(2 + 1.5 * a.stats[0] - 0.75 * d.stats[3])) + (this.has(a.side, 'spin') ? 1 : 0); }
+  counterOf(d, a) { return Math.max(1, Math.floor((Math.max(1, Math.round(2 + 1.5 * d.stats[0] - 0.75 * a.stats[3]))) / 2)); }
+  pickChance(a) { return Math.min(0.85, 0.3 + 0.1 * a.stats[1]); }
+  demand(side) {
+    const d = [0, 0, 0, 0];
+    for (const n of this.crowd[side]) d[n.taste]++;
+    for (const u of this.active(side)) d[u.taste]++;
+    return d;
+  }
+  pitchAmt(u, base = 1) { return base + (u.stats[0] >= 3 ? 1 : 0) + (this.has(u.side, 'hunt') ? 1 : 0); }
+  wouldJoin(n, side, amt) { const r = warmRule(n.amt, n.for, amt, side); return r[1] === side && r[0] >= A.JOIN_AT; }
+
+  actions(u) {
+    const out = [];
+    if (u.acted || u.sulk || u.gone) return out;
+    const other = this.other(u.side);
+    const near = this.adj(u.x, u.y);
+    for (const [x, y] of near) {
+      const e = this.unitAt(x, y);
+      if (e && e.side === other) {
+        const d = this.dmgOf(u, e);
+        out.push({ kind: 'confront', target: e.id, x, y, label: `Argue with ${e.name}`,
+          sub: `${d}–${d + 1} morale off their ${e.morale}${d >= e.morale ? ', breaks them' : `; they answer back for ${this.counterOf(e, u)}`}` });
+        if (e.cards.length) out.push({ kind: 'pickpocket', target: e.id, x, y, label: `Pickpocket ${e.name}`,
+          sub: `${Math.round(100 * this.pickChance(u))}% to lift one of their ${e.cards.length} card${e.cards.length === 1 ? '' : 's'}` });
+      }
+      const t = this.tile(x, y);
+      if (DESKS[t] !== undefined && u.cards.length < A.CARRY && this.stock[key(x, y)] > 0) {
+        out.push({ kind: 'desk', x, y, taste: DESKS[t], label: `Take a ${TASTE[DESKS[t]]} card`, sub: `${this.stock[key(x, y)]} left on this desk; ${this.demand(u.side)[DESKS[t]]} of yours want ${TASTE[DESKS[t]]}` });
+      }
+      if (t === 'C') out.push({ kind: 'closet', x, y, label: 'Raid the supply closet', sub: 'two good slides, quality 2 or 3; first come, first served' });
+      const n = this.neutralAt(x, y);
+      if (n) {
+        const amt = this.pitchAmt(u);
+        out.push({ kind: 'pitch', target: n.id, x, y, label: `Pitch ${n.name}`,
+          sub: `${ROLE_NAME[n.role]}, wants ${TASTE[n.taste]}; ${this.wouldJoin(n, u.side, amt) ? 'joins your crowd' : `warms by ${amt}`}` });
+      }
+    }
+    if (u.cd === 0 && u.job >= 0 && u.kind === 'staff') for (const a of this.abilityTargets(u)) out.push(a);
+    const onL = this.tile(u.x, u.y) === 'L' || near.some(([x, y]) => this.tile(x, y) === 'L');
+    if (onL) {
+      const mine = this.units.filter(v => v.side === u.side && v.kind === 'contractor' && !v.gone).length;
+      for (const c of CONTRACTORS) {
+        if (this.budget[u.side] >= c.price && mine < A.MAX_CONTRACTORS && this.turn < A.TURNS) {
+          out.push({ kind: 'contract', id: c.id, label: `Hire a ${c.name}, $${c.price}`, sub: `${c.what}; stays ${A.CONTRACT_TURNS} turns` });
+        }
+      }
+      for (const c of this.consultants) {
+        if (c.side === u.side) continue;
+        const price = c.side === NONE ? c.price : c.loyalty + 2;
+        if (this.budget[u.side] >= price) {
+          out.push({ kind: 'consult', id: c.id, price, label: `${c.side === NONE ? 'Retain' : 'Poach'} ${c.name}, $${price}`, sub: c.what + (c.side === other ? '; they paid ' + c.loyalty : '') });
+        }
+      }
+    }
+    if (this.tile(u.x, u.y) === 'R') {
+      if (!this.rigged[other] && this.turn < A.TURNS) out.push({ kind: 'rig', label: 'Rig their projector', sub: 'their best slide comes up blank at the final talk, unless they check it' });
+      if (this.rigged[u.side]) out.push({ kind: 'check', label: 'Check your projector', sub: 'it has been rigged; this puts it right' });
+    }
+    out.push({ kind: 'wait', label: 'Hold', sub: 'do nothing more this turn' });
     return out;
   }
 
-  demand(s) {
-    const d = [0, 0, 0, 0];
-    for (const p of this.people) if ((p.side === s && claps(p.kind)) || this.isCuriousFor(p, s)) d[p.taste]++;
-    return d;
-  }
-
-  // Who a desk visit at [room] warms, nearest first on the board.
-  warmTargets(room, side) {
-    const d = distances(room);
-    const n = A.WARM_COUNT + (this.has(side, RO.INTERN) ? 1 : 0);
-    return this.people
-      .filter(p => p.kind === K.NEUTRAL && d[p.room] !== undefined && d[p.room] <= A.WARM_RANGE)
-      .sort((a, b) => d[a.room] - d[b.room] || (this.isCuriousFor(a, side) ? 1 : 0) - (this.isCuriousFor(b, side) ? 1 : 0) || a.id - b.id)
-      .slice(0, n);
-  }
-  warmPreview(room, side) {
-    let fresh = 0, stolen = 0;
-    for (const q of this.warmTargets(room, side)) {
-      const r = warmRule(q.curiosity, q.curiousFor, A.WARM_AMOUNT, side);
-      const wasTheirs = this.isCurious(q) && q.curiousFor !== side;
-      const nowMine = r[1] === side && r[0] >= A.CURIOUS_AT;
-      if (wasTheirs && !(r[1] !== side && r[0] >= A.CURIOUS_AT)) stolen++;
-      if (nowMine && !this.isCuriousFor(q, side)) fresh++;
-    }
-    return [fresh, stolen];
-  }
-  warm(p, amount, by) {
-    const r = warmRule(p.curiosity, p.curiousFor, amount, by);
-    p.curiosity = r[0]; p.curiousFor = r[1];
-  }
-
-  closeMax(s) { return A.STREAM_CLOSE + (this.has(s, RO.SALES) ? 1 : 0); }
-  chill(s) { const c = A.RUMOUR_CHILL + 0.4 * this.stat(s, 1); return this.has(s, RO.MKT) ? c * 2 : c; }
-
-  poachTargets(side, limit = 2, from = null) {
-    const other = this.other(side);
-    const d = distances(from || this.pos[side]);
+  abilityTargets(u) {
+    const other = this.other(u.side);
+    const ab = ABILITY[u.job];
+    const within = (list, r) => list.filter(v => man(u.x, u.y, v.x, v.y) <= r);
+    const base = { kind: 'ability', ability: u.job };
     const out = [];
-    for (const p of this.people) {
-      if (p.side !== other || !flippable(p.kind) || p.resolve || p.room === 'rock') continue;
-      let card = this.satchel[side].findIndex(c => c.taste === p.taste);
-      if (card < 0 && p.role === RO.INTERN && this.satchel[side].length > 0) card = 0;
-      if (card < 0) continue;
-      const prop = this.satchel[side][card];
-      out.push({
-        id: 'poach:' + p.id, kind: 'poach', station: p.room, target: p.id, card,
-        label: 'Buy ' + p.name,
-        sub: `${ROLE_NAME[p.role]}, wants ${TASTE[p.taste]}; spend ${prop.name} in the ${ROOMS[p.room].name.toLowerCase()}`,
-        enabled: true, why: '', value: 4.2, walk: d[p.room] ?? 99,
-      });
+    switch (u.job) {
+      case RO.CEO: {
+        const allies = within(this.active(u.side), 3).filter(v => v.morale < v.max);
+        if (allies.length) out.push({ ...base, label: `${ab.name}`, sub: `${allies.length} nearby regain up to 3 morale` });
+        break;
+      }
+      case RO.ENG:
+        if (u.cards.length < A.CARRY) out.push({ ...base, label: ab.name, sub: ab.what });
+        break;
+      case RO.IT:
+        for (const e of within(this.active(other), 4)) out.push({ ...base, target: e.id, x: e.x, y: e.y, label: `${ab.name} ${e.name}`, sub: `2 morale off their ${e.morale}; their ability waits ${A.CD} turns` });
+        break;
+      case RO.HR:
+        for (const v of within(this.active(u.side), 2)) if (v.morale < v.max) out.push({ ...base, target: v.id, x: v.x, y: v.y, label: `${ab.name} ${v === u ? 'yourself' : v.name}`, sub: `back up to ${Math.min(v.max, v.morale + 6)} of ${v.max}` });
+        break;
+      case RO.MKT: {
+        const hit = within(this.active(other), 2);
+        if (hit.length) out.push({ ...base, label: ab.name, sub: `${hit.length} enemy within 2 lose 3 morale each` });
+        break;
+      }
+      case RO.SALES:
+        for (const n of this.neutrals.filter(n => man(u.x, u.y, n.x, n.y) <= 3)) {
+          const amt = this.pitchAmt(u, 2);
+          out.push({ ...base, target: n.id, x: n.x, y: n.y, label: `${ab.name} ${n.name}`, sub: this.wouldJoin(n, u.side, amt) ? 'joins your crowd' : `warms by ${amt}` });
+        }
+        break;
+      case RO.LEGAL:
+        for (const e of within(this.active(other), 4)) if (!e.rooted) out.push({ ...base, target: e.id, x: e.x, y: e.y, label: `${ab.name} on ${e.name}`, sub: 'they cannot move on their next turn' });
+        break;
+      case RO.INTERN: {
+        if (u.cards.length >= A.CARRY) break;
+        const seen = new Set();
+        for (const k in this.stock) {
+          const [x, y] = k.split(',').map(Number);
+          const t = DESKS[this.tile(x, y)];
+          if (this.stock[k] > 0 && man(u.x, u.y, x, y) <= 6 && !seen.has(t)) { seen.add(t); out.push({ ...base, x, y, taste: t, label: `${ab.name} a ${TASTE[t]} card`, sub: `from the desk ${man(u.x, u.y, x, y)} tiles away` }); }
+        }
+        break;
+      }
     }
-    out.sort((a, b) => a.walk - b.walk);
-    return out.slice(0, limit);
-  }
-  threatened(side) { return this.poachTargets(this.other(side), 1).length > 0; }
-
-  // Every legal move for [side], each saying what it would do. The same list feeds
-  // the player's cards and the nemesis's choice.
-  options(side, fromRoom = '', lookahead = true) {
-    const other = this.other(side);
-    const demand = this.demand(side);
-    const here = fromRoom || this.pos[side];
-    const opts = [];
-
-    for (let i = 0; i < 4; i++) {
-      const id = 'desk:' + i;
-      const w = this.warmPreview(id, side);
-      let sub = `take a ${TASTE[i]} card; ${demand[i]} in the room want it`;
-      if (w[0] > 0) sub += `; ${w[0]} nearby get curious`;
-      if (w[1] > 0) sub += `; steals ${w[1]} from them`;
-      opts.push({ id, kind: 'desk', taste: i, station: id, label: `${TASTE[i]} desk`, sub, enabled: true, why: '',
-        value: demand[i] + 1.1 * w[0] + 0.7 * w[1] });
-    }
-
-    const curious = this.people.filter(p => this.isCuriousFor(p, side) && p.room === 'stream').length;
-    const cm = this.closeMax(side);
-    opts.push({ id: 'stream', kind: 'stream', station: 'stream', label: 'Stream',
-      sub: curious > 0 ? `close up to ${cm} of the ${curious} curious about you there` : 'nobody curious about you there yet; warms them a little',
-      enabled: true, why: '', value: Math.min(curious, cm) * 2.6 + (curious === 0 ? 0.4 : 0) });
-
-    const exposed = this.people.filter(p => p.side === side && flippable(p.kind) && !p.resolve).length;
-    opts.push({ id: 'break', kind: 'break', station: 'break', label: 'Break room',
-      sub: exposed > 0 ? `shield your ${exposed} followers from being bought this round; a wage slave pads the crowd` : 'a wage slave pads the crowd; nothing of yours is exposed',
-      enabled: true, why: '', value: 0.5 + (exposed >= 1 && this.threatened(side) ? 2.4 : 0) });
-
-    const haters = this.people.filter(p => p.side === side && p.kind === K.HATER).length;
-    if (this.count(side) >= 2 && haters < A.BULLY_FROM) {
-      opts.push({ id: 'heckler', kind: 'heckler', station: 'break', label: 'Send a heckler',
-        sub: `one of your followers turns sour and boos their every talk; with ${A.BULLY_FROM} they send a bully`,
-        enabled: true, why: '',
-        value: (this.count(side) >= this.count(other) + 1 ? 1.8 : 0.6) + (haters === A.BULLY_FROM - 1 ? 0.8 : 0) });
-    }
-
-    // --- sabotage ---
-    const theirHand = this.satchel[other];
-    const tastes = [...new Set(theirHand.map(c => c.taste).filter(t => t >= 0))].slice(0, 2);
-    for (const t of tastes) {
-      const legal = this.has(other, RO.LEGAL);
-      opts.push({ id: 'pinch:' + t, kind: 'pinch', taste: t, station: 'desk:' + t, label: `Pinch their ${TASTE[t]} card`,
-        sub: `take it out of their hand and into yours; they hold ${theirHand.length}`,
-        enabled: !legal, why: legal ? 'their Legal has the desk locked' : '',
-        value: 2.6 + 0.4 * theirHand.length + (demand[t] >= 2 ? 0.8 : 0) + 0.3 * this.stat(side, 1) });
-    }
-    const theirsNear = this.people.filter(p => p.kind === K.NEUTRAL && p.curiousFor === other && p.curiosity > 0 && p.room === 'stream').length;
-    if (theirsNear > 0) {
-      opts.push({ id: 'rumour', kind: 'rumour', station: 'stream', label: 'Spread a rumour',
-        sub: `${theirsNear} by the water were warming to them; cools each by ${this.chill(side).toFixed(1)}`,
-        enabled: true, why: '', value: 0.9 * Math.min(theirsNear, 3) + 0.3 * this.stat(side, 1) });
-    }
-    if (!this.rigged[other] && !this.presented[other] && theirHand.length >= 1 && this.move < A.MOVES) {
-      const it = this.has(other, RO.IT);
-      opts.push({ id: 'rig', kind: 'rig', station: 'rock', label: 'Rig the projector',
-        sub: 'their best slide comes up blank at their talk, unless they spend a move to check it',
-        enabled: !it, why: it ? 'their IT has it locked down' : '',
-        value: (theirHand.length >= 2 ? 2.4 : 1.0) + 0.3 * this.stat(side, 1) });
-    }
-    if (this.rigged[side]) {
-      opts.push({ id: 'check', kind: 'check', station: 'rock', label: 'Check the projector',
-        sub: 'it has been rigged against you; this puts it right', enabled: true, why: '',
-        value: this.satchel[side].length >= 2 ? 2.2 : 0.9 });
-    }
-
-    for (const t of this.poachTargets(side, 2, here)) opts.push(t);
-
-    const hand = this.satchel[side].length;
-    opts.push({ id: 'present', kind: 'present', station: 'rock', label: 'Present now',
-      sub: `${hand} slide${hand === 1 ? '' : 's'} in hand; forfeits your remaining moves` + (this.rigged[side] ? '. Projector rigged: your best slide will be blank' : ''),
-      enabled: true, why: '', value: hand >= A.SLIDES ? 2.5 : -1 });
-
-    if (here !== 'lobby') {
-      opts.push({ id: 'lobby', kind: 'lobby', station: 'lobby', label: 'Walk to the Lobby',
-        sub: 'no action; the hub, close to every room', enabled: true, why: '', value: 0.2 });
-    }
-
-    // The board has the last word on every card.
-    const reach = this.reachFrom(side, here);
-    const reachSales = this.has(side, RO.SALES) ? this.reachFrom(side, here, 1) : reach;
-    for (const o of opts) if (o.enabled) this.gate(side, o, o.kind === 'poach' ? reachSales : reach, here);
-
-    if (lookahead) {
-      for (const o of opts) if (o.enabled && o.kind !== 'present') o.value += 0.5 * this.bestNext(side, o.station);
-    }
-    return opts;
+    return out;
   }
 
-  gate(side, o, reach, here) {
-    const other = this.other(side);
-    const room = o.station;
-    o.steps = reach[room];
-    if (room === this.pos[other]) { o.enabled = false; o.why = 'your nemesis is standing there'; }
-    else if (reach[room] === undefined) {
-      const far = distances(here, [this.pos[other]])[room];
-      o.enabled = false;
-      o.why = far !== undefined ? `${far} steps away, you have ${this.steps(side)}` : 'no way through; they are in the doorway';
+  byId(id) { return this.units.find(v => v.id === id) || this.neutrals.find(v => v.id === id); }
+
+  act(u, a) {
+    if (u.acted) return;
+    u.acted = true; u.moved = true; u.from = null;
+    const other = this.other(u.side);
+    const t = a.target !== undefined ? this.byId(a.target) : null;
+    switch (a.kind) {
+      case 'confront': {
+        let d = this.dmgOf(u, t) + this.ri(2);
+        const crit = this.r() < 0.05 * u.stats[1];
+        if (crit) d *= 2;
+        this.say(u.side, `${u.name} argued with ${t.name}: ${d} morale${crit ? ', a devastating point' : ''}.`);
+        this.hit(t, d, u.side);
+        if (!t.sulk && !t.gone && man(u.x, u.y, t.x, t.y) === 1) {
+          const c = this.counterOf(t, u);
+          this.say(t.side, `${t.name} answered back: ${c}.`);
+          this.hit(u, c, t.side);
+        }
+        break;
+      }
+      case 'pickpocket':
+        if (this.r() < this.pickChance(u) && t.cards.length && u.cards.length < A.CARRY) {
+          const c = t.cards.splice(this.ri(t.cards.length), 1)[0];
+          u.cards.push(c);
+          this.say(u.side, `${u.name} lifted ${c.name} off ${t.name}.`);
+        } else this.say(u.side, `${u.name} tried to pick ${t.name}'s pocket and got nothing.`);
+        break;
+      case 'desk': this.takeFromDesk(u, a.x, a.y); break;
+      case 'closet': {
+        this.map[a.y][a.x] = 'c';
+        const got = [];
+        for (let i = 0; i < 2; i++) { const c = { taste: this.ri(4), q: this.r() < 0.35 ? 3 : 2, name: this.pick(GOLD) }; got.push(c); }
+        for (const c of got) { if (u.cards.length < A.CARRY) u.cards.push(c); else (this.loot[key(u.x, u.y)] ||= []).push(c); }
+        this.say(u.side, `${u.name} raided a supply closet: ${got.map(c => `${c.name} (${TASTE[c.taste]}, q${c.q})`).join(', ')}.`);
+        break;
+      }
+      case 'pitch': this.pitch(u, t, this.pitchAmt(u)); break;
+      case 'ability': this.useAbility(u, a, t); break;
+      case 'contract': {
+        const c = CONTRACTORS.find(c => c.id === a.id);
+        this.budget[u.side] -= c.price;
+        const v = this.mkUnit(u.side, -1, c.stats, false, 'contractor', { name: `${c.name} ${this.nextId}`, morale: c.morale, expires: this.turn + A.CONTRACT_TURNS });
+        const [lx, ly] = this.lobby();
+        this.placeNear(v, lx, ly);
+        v.moved = v.acted = true;
+        this.say(u.side, `${u.name} hired a ${c.name} for $${c.price}.`);
+        break;
+      }
+      case 'consult': {
+        const c = this.consultants.find(c => c.id === a.id);
+        const was = c.side;
+        this.budget[u.side] -= a.price;
+        c.side = u.side; c.loyalty = a.price;
+        this.say(u.side, was === NONE ? `${u.name} retained ${c.name} for $${a.price}.` : `${u.name} poached ${c.name} for $${a.price}.`);
+        break;
+      }
+      case 'rig': this.rigged[other] = true; this.say(u.side, u.side === P ? 'You rigged their projector.' : 'Somebody has been at your projector.'); break;
+      case 'check': this.rigged[u.side] = false; this.say(u.side, `${u.name} checked the projector and put it right.`); break;
+      default: break;
+    }
+    this.checkRout();
+  }
+  lobby() { for (let y = 0; y < A.H; y++) for (let x = 0; x < A.W; x++) if (this.map[y][x] === 'L') return [x, y]; return [15, 9]; }
+  takeFromDesk(u, x, y) {
+    const t = DESKS[this.tile(x, y)];
+    this.stock[key(x, y)]--;
+    const c = { taste: t, q: 1, name: this.pick(PROPS[t]) };
+    u.cards.push(c);
+    this.say(u.side, `${u.name} took ${c.name}.`);
+  }
+  pitch(u, n, amt) {
+    const r = warmRule(n.amt, n.for, amt, u.side);
+    n.amt = r[0]; n.for = r[1];
+    if (n.for === u.side && n.amt >= A.JOIN_AT) {
+      this.neutrals = this.neutrals.filter(x => x !== n);
+      this.crowd[u.side].push(n);
+      this.budget[u.side] += 1;
+      this.say(u.side, `${n.name} (${ROLE_NAME[n.role]}, ${TASTE[n.taste]}) joined ${u.side === P ? 'your' : 'their'} crowd.`);
+    } else this.say(u.side, `${u.name} pitched ${n.name}.`);
+  }
+  useAbility(u, a, t) {
+    u.cd = A.CD;
+    const other = this.other(u.side);
+    switch (u.job) {
+      case RO.CEO: for (const v of this.active(u.side)) if (man(u.x, u.y, v.x, v.y) <= 3) v.morale = Math.min(v.max, v.morale + 3); this.say(u.side, `${u.name} rallied the team.`); break;
+      case RO.ENG: u.cards.push({ taste: 2, q: 2, name: 'a working prototype' }); this.say(u.side, `${u.name} built a prototype.`); break;
+      case RO.IT: t.cd = A.CD; this.say(u.side, `${u.name} jammed ${t.name}.`); this.hit(t, 2, u.side); break;
+      case RO.HR: t.morale = Math.min(t.max, t.morale + 6); this.say(u.side, `${u.name} counselled ${t === u ? 'themself' : t.name}.`); break;
+      case RO.MKT: {
+        const hit = this.active(other).filter(e => man(u.x, u.y, e.x, e.y) <= 2);
+        this.say(u.side, `${u.name} started a rumour. ${hit.length} took it personally.`);
+        for (const e of hit) this.hit(e, 3, u.side);
+        break;
+      }
+      case RO.SALES: this.pitch(u, t, this.pitchAmt(u, 2)); break;
+      case RO.LEGAL: t.rooted = 1; this.say(u.side, `${u.name} served ${t.name} an injunction.`); break;
+      case RO.INTERN: this.takeFromDesk(u, a.x, a.y); break;
     }
   }
-
-  bestNext(side, room) {
-    let best = 0;
-    for (const o of this.options(side, room, false)) {
-      if (o.enabled && o.kind !== 'present' && o.kind !== 'lobby') best = Math.max(best, o.value);
+  hit(t, d, bySide) {
+    if (t.sulk || t.gone) return;
+    t.morale -= d;
+    if (t.morale > 0) return;
+    t.morale = 0;
+    if (t.cards.length) { (this.loot[key(t.x, t.y)] ||= []).push(...t.cards); }
+    const dropped = t.cards.length;
+    t.cards = [];
+    this.breaks[bySide]++;
+    this.budget[bySide] += 2;
+    if (t.kind === 'contractor') { t.gone = true; this.say(t.side, `${t.name} quit on the spot${dropped ? ', dropping ' + dropped + ' cards' : ''}.`); }
+    else {
+      t.sulk = this.has(t.side, 'pr') ? 1 : A.SULK;
+      this.say(t.side, `${t.name} is demoralised and gone to sulk in the car park${dropped ? `, dropping ${dropped} card${dropped === 1 ? '' : 's'}` : ''}.`);
     }
-    return best;
+    t.lx = t.x; t.ly = t.y; t.x = -1; t.y = -1;
   }
-
-  // --- doing things ---
-  execute(side, opt) {
-    const who = side === P ? 'You' : 'They';
-    this.pos[side] = opt.station;
-    switch (opt.kind) {
-      case 'desk': this.actDesk(side, opt.taste); break;
-      case 'stream': this.actStream(side); break;
-      case 'break': this.actBreak(side); break;
-      case 'heckler': this.actHeckler(side); break;
-      case 'pinch': this.actPinch(side, opt.taste); break;
-      case 'rumour': this.actRumour(side); break;
-      case 'rig': this.actRig(side); break;
-      case 'check': this.actCheck(side); break;
-      case 'poach': this.actPoach(side, opt.target, opt.card); break;
-      case 'lobby': this.say(side, `${who} stepped into the Lobby.`); break;
-      default: this.say(side, `${who} stood still.`);
-    }
-  }
-
-  actDesk(side, taste) {
-    const prop = { taste, name: this.pick(PROPS[taste]) };
-    this.satchel[side].push(prop);
-    let fresh = 0;
-    for (const q of this.warmTargets('desk:' + taste, side)) {
-      const was = this.isCuriousFor(q, side);
-      this.warm(q, A.WARM_AMOUNT, side);
-      if (this.isCurious(q)) q.room = 'stream';
-      if (!was && this.isCuriousFor(q, side)) fresh++;
-    }
-    this.say(side, side === P ? `You took ${prop.name}. ${fresh} got curious and drifted to the stream.`
-      : `They took a ${TASTE[taste]} card. ${fresh} got curious about them.`);
-  }
-
-  actStream(side) {
-    const cur = this.people.filter(p => this.isCuriousFor(p, side) && p.room === 'stream').sort((a, b) => b.curiosity - a.curiosity);
-    if (!cur.length) {
-      let n = 0;
-      for (const p of this.people) if (p.kind === K.NEUTRAL && p.room === 'stream') { this.warm(p, 0.5, side); n++; }
-      this.say(side, side === P ? `Nobody at the water was interested yet. ${n} warmed a little.` : `They loitered at the stream. ${n} warmed a little.`);
-      return;
-    }
-    let taken = 0;
-    for (const p of cur) {
-      if (taken >= this.closeMax(side)) break;
-      p.kind = p.curiosity >= A.CUR_MAX - 0.01 && this.r() < 0.3 ? K.INFLUENCER : K.FOLLOWER;
-      p.side = side; p.curiosity = 0; p.curiousFor = NONE; p.room = p.home;
-      taken++;
-    }
-    this.roundStats[side].gained += taken;
-    this.say(side, side === P ? `You won over ${taken} at the water.` : `They won over ${taken} at the water.`);
-  }
-
-  actBreak(side) {
-    this.addPerson(K.WAGE, side, 'break');
-    for (const p of this.people) if (p.side === side && flippable(p.kind)) p.resolve = true;
-    this.say(side, side === P ? 'Rallied. Your people cannot be bought this round; a wage slave drifted in.'
-      : 'They rallied. Nobody of theirs can be bought this round.');
-  }
-
-  actHeckler(side) {
-    const pool = this.people.filter(p => p.side === side && p.kind === K.FOLLOWER);
-    if (!pool.length) return;
-    const q = this.pick(pool);
-    q.kind = K.HATER;
-    this.say(side, side === P ? `${q.name} has gone sour on your behalf.` : `They turned ${q.name} into a heckler.`);
-  }
-
-  actPinch(side, taste) {
-    const other = this.other(side);
-    const i = this.satchel[other].findIndex(c => c.taste === taste);
-    if (i < 0) return;
-    const card = this.satchel[other].splice(i, 1)[0];
-    this.satchel[side].push(card);
-    if (side === P) { this.say(P, `You pinched their ${card.name}.`); this.sablog[N].push(`you pinched their ${TASTE[taste]}`); }
-    else { this.say(N, `They pinched your ${card.name} right off the desk.`); this.sablog[P].push(`they pinched your ${TASTE[taste]}`); }
-  }
-
-  actRumour(side) {
-    const other = this.other(side);
-    let n = 0;
-    for (const p of this.people) {
-      if (p.kind === K.NEUTRAL && p.curiousFor === other && p.curiosity > 0 && p.room === 'stream') { this.warm(p, this.chill(side), side); n++; }
-    }
-    if (side === P) { this.say(P, `A word by the water. ${n} went cold on them.`); this.sablog[N].push(`your rumour cooled ${n}`); }
-    else { this.say(N, `They have been talking about you by the water. ${n} of yours went cold.`); this.sablog[P].push(`their rumour cooled ${n} of yours`); }
-  }
-
-  actRig(side) {
-    this.rigged[this.other(side)] = true;
-    this.say(side, side === P ? 'Projector rigged. Their best slide will be blank.' : 'They were at the rock. Your projector is rigged: check it, or present blind.');
-  }
-  actCheck(side) {
-    this.rigged[side] = false;
-    this.say(side, side === P ? 'Projector checked and put right.' : 'They checked the projector. Your rig is undone.');
-  }
-  springRig(side) {
-    if (!this.rigged[side]) return null;
-    this.rigged[side] = false;
-    const h = this.satchel[side];
-    if (!h.length) return null;
-    const d = this.demand(side);
-    let best = 0;
-    for (let i = 0; i < h.length; i++) if (h[i].taste >= 0 && d[h[i].taste] > (h[best].taste >= 0 ? d[h[best].taste] : -1)) best = i;
-    const lost = h[best];
-    h[best] = { taste: -1, name: A.DUD };
-    this.say(side, side === P ? `The projector was rigged. Your ${lost.name} is a blank slide.` : `Their projector was rigged. Their ${lost.name} came up blank.`);
-    return lost;
-  }
-
-  actPoach(side, targetId, card) {
-    const t = this.people.find(p => p.id === targetId);
-    if (!t || card < 0 || card >= this.satchel[side].length) return;
-    const prop = this.satchel[side].splice(card, 1)[0];
-    t.kind = K.FOLLOWER; t.side = side;
-    this.roundStats[side].gained++; this.roundStats[this.other(side)].lost++;
-    this.say(side, side === P ? `${t.name} took ${prop.name} and came over.` : `They bought ${t.name} off you with ${prop.name}.`);
-  }
-
-  tickInfluencers(side) {
-    for (const p of this.people) {
-      if (p.side !== side || p.kind !== K.INFLUENCER) continue;
-      const d = distances(p.room);
-      const q = this.people.filter(x => x.kind === K.NEUTRAL && !this.isCuriousFor(x, side))
-        .sort((a, b) => (d[a.room] ?? 99) - (d[b.room] ?? 99) || a.id - b.id)[0];
-      if (!q) continue;
-      this.warm(q, A.WARM_AMOUNT, side);
-      if (this.isCurious(q)) q.room = 'stream';
-    }
-  }
-
-  noteLead() {
-    const a = this.count(P), b = this.count(N);
-    const leader = a > b ? P : b > a ? N : NONE;
-    if (leader !== NONE && this.lastLeader !== NONE && leader !== this.lastLeader) this.leadChanges++;
-    if (leader !== NONE) this.lastLeader = leader;
-  }
-
-  sendBullies() {
+  checkRout() {
+    if (this.over) return;
     for (const side of [P, N]) {
-      const h = this.people.filter(p => p.side === side && p.kind === K.HATER);
-      if (h.length >= A.BULLY_FROM) {
-        const b = this.pick(h); b.kind = K.BULLY;
-        this.say(side, side === N ? `${b.name} has been sent to sit at the front of your talk.` : `${b.name} is off to sit at the front of their talk.`);
+      const staff = this.units.filter(u => u.side === side && u.kind === 'staff');
+      if (staff.length && staff.every(u => u.sulk > 0)) {
+        this.over = true; this.winner = this.other(side); this.how = 'rout';
+        this.say(this.other(side), side === N ? 'Their whole party is in the car park. The office is yours.' : 'Your whole party is sulking in the car park. They take the office.');
       }
     }
   }
 
-  firstMover() {
-    const a = this.count(P), b = this.count(N);
-    let f;
-    if (a > b) f = P; else if (b > a) f = N; else f = this.lastFirst === P ? N : P;
-    this.lastFirst = f;
-    return f;
-  }
-
-  beginRound() {
-    this.resetRoundStats();
-    for (const p of this.people) p.resolve = false;
-    this.presented = { 0: false, 1: false };
-    this.sablog = { 0: [], 1: [] };
-    if (this.round > 1) this.placeForRound();
-    this.move = 1;
-  }
-
-  // --- the talk ---
-  startTalk(side) {
-    const other = this.other(side);
-    this.presented[side] = true;
-    this.pos[side] = 'rock';
-    const hr = this.has(side, RO.HR);
-    const audience = [];
-    let bounced = 0;
-    for (const p of this.people) {
-      if (p.side === side && p.kind !== K.NEUTRAL && !booKind(p.kind)) audience.push(p);
-      else if (p.side === other && booKind(p.kind)) {
-        if (p.kind === K.BULLY && hr) { bounced++; continue; }
-        audience.push(p);
+  // --- turns ---
+  startTurn(side) {
+    this.side = side;
+    this.budget[side] += 1;
+    if (side === P && this.turn > 1 && this.turn % 3 === 1) for (const k in this.stock) this.stock[k] = Math.min(A.DESK_STOCK, this.stock[k] + 1);
+    for (const u of this.units.filter(u => u.side === side && !u.gone)) {
+      u.moved = false; u.acted = false; u.from = null;
+      if (u.cd > 0) u.cd--;
+      if (u.kind === 'contractor' && this.turn >= u.expires) {
+        u.gone = true;
+        if (u.cards.length) (this.loot[key(u.x, u.y)] ||= []).push(...u.cards);
+        u.cards = [];
+        this.say(side, `${u.name}'s contract is up. They left${u.x >= 0 ? ' their cards on the floor' : ''}.`);
+        u.x = u.y = -1;
+        continue;
+      }
+      if (u.sulk > 0) {
+        u.sulk--;
+        if (u.sulk === 0) {
+          const [sx, sy] = this.spawnTiles(side)[0];
+          this.placeNear(u, sx, sy);
+          u.morale = Math.ceil(u.max / 2);
+          this.say(side, `${u.name} is back from the car park, sheepish, at ${u.morale} morale.`);
+        } else { u.moved = u.acted = true; }
+        continue;
+      }
+      if (this.adj(u.x, u.y).some(([x, y]) => this.tile(x, y) === '~') && u.morale < u.max) {
+        u.morale = Math.min(u.max, u.morale + 2);
       }
     }
-    let slots = Math.floor(audience.length / perHeads(this.round));
-    if (this.count(side) < this.count(other)) slots += A.UNDERDOG;
-    if (this.has(side, RO.CEO)) slots++;
-    const d = distances('rock');
-    const spectators = this.people.filter(p => this.isCuriousFor(p, side))
-      .sort((a, b) => d[a.room] - d[b.room] || b.curiosity - a.curiosity || a.id - b.id).slice(0, Math.max(slots, 0));
-    const blanked = this.springRig(side);
-    const hand = this.satchel[side].slice();
-    const booers = audience.filter(p => p.side === other);
-    return {
-      side, audience, spectators, hand, played: [], claps: 0, boos: 0, blanked, bounced,
-      booers, bully: booers.some(b => b.kind === K.BULLY),
-      heckles: booers.length ? hecklesFor(this.round) : 0, hecklesDone: 0, pending: false,
-      slidesMax: Math.min(A.SLIDES, hand.length), lines: [], lost: [], won: [], done: false,
-    };
   }
-  fans(t, taste) {
-    let n = 0;
-    for (const p of t.audience) if (p.side === t.side && claps(p.kind) && p.taste === taste) n++;
-    for (const p of t.spectators) if (p.taste === taste) n++;
-    return n;
-  }
-  slideClaps(t, card) {
-    if (card.taste < 0) return 0;
-    const f = this.fans(t, card.taste);
-    return Math.round((2 + 5 * f) * (1 + 0.12 * this.stat(t.side, 0))) +
-      (this.has(t.side, RO.ENG) && (card.taste === 0 || card.taste === 2) ? f : 0);
-  }
-  heckleOdds(t) {
-    const lovers = t.audience.filter(p => p.side === t.side && p.kind === K.LOVER).length;
-    return Math.min(0.95, 0.6 + 0.1 * lovers);
-  }
-  ignoreCost(t) { return Math.max(1, 4 - this.stat(t.side, 3)); }
-  playSlide(t, idx) {
-    const card = t.hand.splice(idx, 1)[0];
-    t.played.push(card);
-    const c = this.slideClaps(t, card);
-    let b = card.taste < 0 ? 3 : 0;
-    for (const bo of t.booers) b += bo.kind === K.BULLY ? 3 : 2;
-    t.claps += c; t.boos += b;
-    t.lines.push(card.taste < 0 ? `A blank slide. The room stares at the wall. ${b} boos.`
-      : `${card.name}: ${this.fans(t, card.taste)} wanted ${TASTE[card.taste]}. ${c} claps${b ? `, ${b} boos` : ''}.`);
-    if (t.hecklesDone < t.heckles) t.pending = true;
-  }
-  resolveHeckle(t, clapBack) {
-    t.hecklesDone++; t.pending = false;
-    if (clapBack) {
-      if (this.r() < this.heckleOdds(t)) { t.claps += 9; t.lines.push('Clapped back. The room roars: +9 claps.'); }
-      else {
-        t.boos += 5; t.lines.push('The comeback fell flat: +5 boos.');
-        if (t.bully) { const q = this.loseOne(t); if (q) t.lines.push(`The bully took ${q.name} with them.`); }
-      }
-    } else {
-      const c = this.ignoreCost(t);
-      t.boos += c; t.lines.push(`Let it go: +${c} boos.`);
-    }
-  }
-  loseOne(t) {
-    const pool = t.audience.filter(p => p.side === t.side && flippable(p.kind) && !t.lost.includes(p));
-    if (!pool.length) return null;
-    const q = this.pick(pool); t.lost.push(q); return q;
-  }
-  aiSlide(t) {
-    let best = 0, bw = -1;
-    for (let i = 0; i < t.hand.length; i++) { const w = t.hand[i].taste < 0 ? -1 : this.fans(t, t.hand[i].taste); if (w > bw) { bw = w; best = i; } }
-    return best;
-  }
-  finishTalk(t) {
-    const side = t.side;
-    if (t.bully) { const q = this.loseOne(t); if (q) t.lines.push(`The bully at the front walked off with ${q.name}.`); }
-    const C = t.claps, B = t.boos;
-    const lovers = t.audience.filter(p => p.side === side && p.kind === K.LOVER).length;
-    let n = Math.max(0, Math.floor((B - 4 * this.stat(side, 3) - 0.5 * C) / 8)) - lovers;
-    while (n-- > 0) this.loseOne(t);
-    const ratio = C / Math.max(C + B, 1);
-    const conv = Math.round(t.spectators.length * Math.min(1, Math.max(0, (ratio - 0.35) / 0.5)));
-    t.won = t.spectators.slice(0, conv);
-    for (const p of t.won) { p.kind = K.FOLLOWER; p.side = side; p.curiosity = 0; p.curiousFor = NONE; p.room = p.home; }
-    for (const q of t.lost) { q.kind = K.NEUTRAL; q.side = NONE; q.curiosity = A.CURIOUS_AT - 0.5; q.curiousFor = side; q.resolve = false; q.room = q.home; }
-    t.ratio = ratio;
-    t.gained = Math.max(C - B, 0);
-    this.points[side] += t.gained;
-    this.clapsTotal[side] += C; this.boosTotal[side] += B;
-    this.roundStats[side].claps += C; this.roundStats[side].boos += B;
-    this.roundStats[side].gained += t.won.length; this.roundStats[side].lost += t.lost.length;
-    if (ratio > 0.78 && C >= 20) {
-      const f = this.people.find(p => p.side === side && p.kind === K.FOLLOWER);
-      if (f) { f.kind = K.LOVER; t.lover = f; }
-    }
-    this.satchel[side] = [];
-    this.noteLead();
-    t.done = true;
-    const who = side === P ? 'Your' : 'Their';
-    this.say(side, `${who} talk: ${C} claps, ${B} boos. Won ${t.won.length}, lost ${t.lost.length}.`);
+  endTurn() {
+    for (const u of this.units) if (u.side === this.side && u.rooted > 0 && u.moved) u.rooted--;
+    for (const u of this.units) if (u.side === this.side && u.rooted > 0 && !u.moved) u.rooted = 0;
+    if (this.side === N) this.turn++;
+    if (this.turn > A.TURNS) return false;
+    this.startTurn(this.other(this.side));
+    return true;
   }
 
-  endRound() {
-    for (const p of this.people) if (p.kind === K.BULLY) p.kind = K.HATER;
-    this.roundCard = {
-      round: this.round, last: this.round >= A.ROUNDS,
-      you: { ...this.roundStats[P], people: this.count(P), points: this.points[P] },
-      them: { ...this.roundStats[N], people: this.count(N), points: this.points[N] },
-    };
-  }
-
-  nemesisChoose() {
-    let best = null, bv = -Infinity;
-    for (const o of this.options(N)) {
-      if (!o.enabled) continue;
-      if (o.kind === 'present' && this.move < A.MOVES && this.satchel[N].length < A.SLIDES) continue;
-      const v = o.value + this.r() * 0.1;
-      if (v > bv) { bv = v; best = o; }
-    }
-    return best || { kind: 'pass', station: this.pos[N], label: 'Wait' };
-  }
-
-  result() {
-    const a = this.count(P), b = this.count(N);
-    let winner = a > b ? P : b > a ? N : NONE;
-    if (winner === NONE) winner = this.points[P] > this.points[N] ? P : this.points[N] > this.points[P] ? N : NONE;
-    return { you: a, them: b, margin: a - b, winner, leadChanges: this.leadChanges, pts: [this.points[P], this.points[N]] };
-  }
-
-  // The whole match. agent answers the player's questions; hooks let a UI watch.
-  async run(agent, hooks = {}) {
-    const H = async (k, ...a) => { if (hooks[k]) await hooks[k](...a); };
-    while (this.round <= A.ROUNDS) {
-      this.beginRound();
-      const first = this.firstMover();
-      this.first = first;
-      await H('roundStart', first);
-      const order = first === P ? [P, N] : [N, P];
-      for (let m = 0; m < A.MOVES; m++) {
-        this.move = m + 1;
-        for (const side of order) {
-          if (this.presented[side]) continue;
-          this.turn = side;
-          let opt;
-          if (side === P) opt = await agent.chooseMove(this.options(P));
-          else { opt = this.nemesisChoose(); await H('nemesisMove', opt); }
-          if (opt.kind === 'present') {
-            this.say(side, side === P ? 'You went to the rock early.' : 'They went to the rock early.');
-            await this.runTalk(side, agent, hooks);
-          } else this.execute(side, opt);
-          this.tickInfluencers(side);
-          this.noteLead();
-          await H('afterMove', side, opt);
+  // --- the AI: one greedy plan per unit, the same numbers for either side ---
+  goalField(u) {
+    const other = this.other(u.side);
+    const goals = [];
+    const demand = this.demand(u.side);
+    const room = u.cards.length < A.CARRY;
+    for (const k in this.stock) if (this.stock[k] > 0 && room) { const [x, y] = k.split(',').map(Number); goals.push([x, y, 2 + 0.3 * demand[DESKS[this.tile(x, y)]]]); }
+    for (let y = 0; y < A.H; y++) for (let x = 0; x < A.W; x++) if (this.map[y][x] === 'C' && room) goals.push([x, y, 6]);
+    for (const k in this.loot) { const [x, y] = k.split(',').map(Number); goals.push([x, y, 2.5 * this.loot[k].length]); }
+    for (const n of this.neutrals) goals.push([n.x, n.y, 2.2 + (n.for === other ? 0.6 : 0)]);
+    for (const e of this.active(other)) goals.push([e.x, e.y, (u.stats[0] >= 2 ? 4.5 : 2.5) + 4 * (1 - e.morale / e.max) + e.cards.length * 1.2 + (e.leader ? 1 : 0)]);
+    const [lx, ly] = this.lobby();
+    if (this.budget[u.side] >= 5 && this.turn < A.TURNS - 1) goals.push([lx, ly, 3]);
+    if (!this.rigged[other] && this.turn >= 3 && this.turn < A.TURNS) for (let y = 0; y < A.H; y++) for (let x = 0; x < A.W; x++) if (this.map[y][x] === 'R') goals.push([x, y, 2]);
+    if (this.rigged[u.side]) for (let y = 0; y < A.H; y++) for (let x = 0; x < A.W; x++) if (this.map[y][x] === 'R') goals.push([x, y, 4]);
+    const field = new Float32Array(A.W * A.H);
+    for (const [gx, gy, w] of goals) {
+      const d = new Int16Array(A.W * A.H).fill(-1);
+      const q = [];
+      // goals that are furniture or people: start from the walkable tiles next to them
+      if (WALK.has(this.tile(gx, gy)) && !this.neutralAt(gx, gy) && !this.unitAt(gx, gy)) { d[gy * A.W + gx] = 0; q.push([gx, gy]); }
+      else for (const [x, y] of this.adj(gx, gy)) if (WALK.has(this.tile(x, y))) { d[y * A.W + x] = 0; q.push([x, y]); }
+      for (let i = 0; i < q.length; i++) {
+        const [x, y] = q[i];
+        const dd = d[y * A.W + x];
+        const v = w * Math.pow(0.86, dd);
+        if (v > field[y * A.W + x]) field[y * A.W + x] = v;
+        if (dd > 24) continue;
+        for (const [dx, dy] of DIRS) {
+          const nx = x + dx, ny = y + dy;
+          if (!WALK.has(this.tile(nx, ny)) || d[ny * A.W + nx] >= 0) continue;
+          d[ny * A.W + nx] = dd + 1; q.push([nx, ny]);
         }
       }
-      this.turn = NONE;
-      this.sendBullies();
-      for (const side of order) if (!this.presented[side]) await this.runTalk(side, agent, hooks);
-      this.endRound();
-      await H('roundEnd', this.roundCard);
-      this.round++;
     }
-    this.round = A.ROUNDS;
-    this.over = true;
-    const res = this.result();
-    await H('matchEnd', res);
-    return res;
+    return field;
   }
-
-  async runTalk(side, agent, hooks = {}) {
-    const H = async (k, ...a) => { if (hooks[k]) await hooks[k](...a); };
-    const t = this.startTalk(side);
-    await H('talkStart', t);
-    while (t.played.length < t.slidesMax) {
-      const idx = side === P ? await agent.chooseSlide(t, this) : this.aiSlide(t);
-      this.playSlide(t, idx);
-      await H('talkUpdate', t);
-      if (t.pending) {
-        const cb = side === P ? await agent.chooseHeckle(t, this) : false;
-        this.resolveHeckle(t, cb);
-        await H('talkUpdate', t);
+  danger(u, x, y) {
+    let s = 0;
+    for (const e of this.active(this.other(u.side))) {
+      if (man(e.x, e.y, x, y) <= this.moveOf(e) + 1) s += this.dmgOf(e, u) + 0.5;
+    }
+    return s;
+  }
+  actValue(u, a) {
+    const t = a.target !== undefined ? this.byId(a.target) : null;
+    switch (a.kind) {
+      case 'confront': {
+        const d = this.dmgOf(u, t) + 0.5 + 0.05 * u.stats[1] * this.dmgOf(u, t);
+        if (d >= t.morale) return 8 + 2 * t.cards.length + (t.leader ? 4 : 0);
+        const c = this.counterOf(t, u);
+        if (c >= u.morale) return -10;
+        return d * 1.7 + (t.leader ? 1 : 0) - 0.5 * c + (d >= t.morale - 2 ? 1.5 : 0);
+      }
+      case 'pickpocket': return this.pickChance(u) * 3 * (u.cards.length < A.CARRY ? 1 : 0);
+      case 'desk': return 2 + 0.3 * this.demand(u.side)[a.taste];
+      case 'closet': return 6;
+      case 'pitch': return 2 + (this.wouldJoin(t, u.side, this.pitchAmt(u)) ? 3 : 0) + (t.for === this.other(u.side) ? 0.5 : 0);
+      case 'ability':
+        switch (u.job) {
+          case RO.CEO: return this.active(u.side).filter(v => man(u.x, u.y, v.x, v.y) <= 3).reduce((s, v) => s + Math.min(3, v.max - v.morale), 0) * 0.8;
+          case RO.ENG: return 3;
+          case RO.IT: return 2 + (t.cd === 0 ? 2 : 0) + (t.morale <= 2 ? 8 : 0);
+          case RO.HR: return Math.min(6, t.max - t.morale) * 0.8 + (t.leader ? 1 : 0);
+          case RO.MKT: return this.active(this.other(u.side)).filter(e => man(u.x, u.y, e.x, e.y) <= 2).reduce((s, e) => s + (e.morale <= 3 ? 8 : 3), 0);
+          case RO.SALES: return 2.5 + (this.wouldJoin(t, u.side, this.pitchAmt(u, 2)) ? 3 : 0);
+          case RO.LEGAL: return 1.5 + (this.danger(t, t.x, t.y) > 0 ? 1.5 : 0);
+          case RO.INTERN: return 3;
+        }
+        return 0;
+      case 'contract': return this.turn <= A.TURNS - 3 ? 2.5 : 0;
+      case 'consult': return this.turn <= A.TURNS - 2 ? 5 + (a.price > 7 ? -1 : 0) : 0;
+      case 'rig': return this.turn >= 3 ? 3.5 : 1;
+      case 'check': return 5;
+      default: return 0;
+    }
+  }
+  plan(u, policy = 'greedy') {
+    const { tiles } = this.reach(u);
+    const keys = Object.keys(tiles);
+    if (policy === 'random') {
+      const k = this.pick(keys);
+      const [x, y] = k.split(',').map(Number);
+      const ox = u.x, oy = u.y; u.x = x; u.y = y;
+      const acts = this.actions(u);
+      u.x = ox; u.y = oy;
+      return { x, y, act: this.pick(acts) };
+    }
+    const field = this.goalField(u);
+    let best = null, bv = -Infinity;
+    const ox = u.x, oy = u.y;
+    for (const k of keys) {
+      const [x, y] = k.split(',').map(Number);
+      u.x = x; u.y = y;
+      const lootHere = (this.loot[k] || []).length;
+      let pos = 2.5 * Math.min(lootHere, A.CARRY - u.cards.length) + field[y * A.W + x] * 0.35;
+      const dg = this.danger(u, x, y);
+      pos -= dg * (dg >= u.morale ? 0.7 : 0.15) * (u.leader ? 1.6 : 1);
+      if (this.adj(x, y).some(([ax, ay]) => this.tile(ax, ay) === '~')) pos += (u.max - u.morale) * 0.15;
+      for (const a of this.actions(u)) {
+        const v = pos + this.actValue(u, a) + this.r() * 0.05;
+        if (v > bv) { bv = v; best = { x, y, act: a }; }
       }
     }
-    this.finishTalk(t);
-    await H('talkEnd', t);
+    u.x = ox; u.y = oy;
+    return best;
+  }
+  // Order a side's units so the ones that can hit something go first.
+  order(side) {
+    return this.active(side).filter(u => !u.acted).sort((a, b) => b.stats[0] - a.stats[0] || a.id - b.id);
+  }
+  playSide(side, policy) {
+    for (const u of this.order(side)) {
+      if (this.over) return;
+      if (u.sulk || u.gone) continue;
+      const p = this.plan(u, policy);
+      if (!p) continue;
+      this.moveUnit(u, p.x, p.y);
+      const a = this.actions(u).find(a => a.kind === p.act.kind && a.target === p.act.target && a.id === p.act.id && a.x === p.act.x && a.y === p.act.y) || { kind: 'wait' };
+      this.act(u, a);
+    }
+  }
+
+  // --- the final talk ---
+  hand(side) { return this.active(side).flatMap(u => u.cards); }
+  startTalk(side) {
+    const other = this.other(side);
+    const audience = [...this.crowd[side].map(n => ({ taste: n.taste, name: n.name })), ...this.active(side).map(u => ({ taste: u.taste, name: u.name }))];
+    const booers = this.active(other);
+    const hand = this.hand(side).map(c => ({ ...c }));
+    const t = { side, audience, booers, hand, played: [], claps: 0, boos: 0, lines: [], heckles: booers.length ? 2 : 0, hecklesDone: 0, pending: false, blanked: null };
+    if (this.rigged[side] && hand.length) {
+      let bi = 0;
+      for (let i = 0; i < hand.length; i++) if (this.slideClaps(t, hand[i]) > this.slideClaps(t, hand[bi])) bi = i;
+      t.blanked = hand[bi];
+      hand[bi] = { taste: -1, q: 0, name: A.DUD };
+    }
+    t.slidesMax = Math.min(A.SLIDES, hand.length);
+    return t;
+  }
+  leader(side) { return this.units.find(u => u.side === side && u.leader); }
+  fans(t, taste) { return t.audience.filter(a => a.taste === taste).length; }
+  slideClaps(t, c) {
+    if (c.taste < 0) return 0;
+    let v = c.q * (2 + 3 * this.fans(t, c.taste)) * (1 + 0.1 * this.leader(t.side).stats[0]);
+    if (c.taste === 0 && this.has(t.side, 'data')) v *= 1.5;
+    return Math.round(v) + (this.has(t.side, 'keynote') ? 3 : 0);
+  }
+  heckleOdds(t) { return Math.min(0.9, 0.55 + 0.05 * this.leader(t.side).stats[3]); }
+  ignoreCost(t) { return Math.max(1, 5 - this.leader(t.side).stats[3]); }
+  playSlide(t, i) {
+    const c = t.hand.splice(i, 1)[0];
+    t.played.push(c);
+    const cl = this.slideClaps(t, c);
+    const b = 2 * t.booers.length + (c.taste < 0 ? 4 : 0);
+    t.claps += cl; t.boos += b;
+    t.lines.push(c.taste < 0 ? `A blank slide. ${b} boos.` : `${c.name} (q${c.q}): ${this.fans(t, c.taste)} wanted ${TASTE[c.taste]}. ${cl} claps${b ? `, ${b} boos` : ''}.`);
+    if (t.hecklesDone < t.heckles && t.played.length >= 2 * t.hecklesDone + 1) t.pending = true;
+  }
+  resolveHeckle(t, back) {
+    t.hecklesDone++; t.pending = false;
+    if (back) {
+      if (this.r() < this.heckleOdds(t)) { t.claps += 10; t.lines.push('Clapped back. The room roars: +10 claps.'); }
+      else { t.boos += 6; t.lines.push('The comeback fell flat: +6 boos.'); }
+    } else { const c = this.ignoreCost(t); t.boos += c; t.lines.push(`Let it go: +${c} boos.`); }
+  }
+  bestSlide(t) {
+    let bi = 0;
+    for (let i = 0; i < t.hand.length; i++) if (this.slideClaps(t, t.hand[i]) > this.slideClaps(t, t.hand[bi])) bi = i;
+    return bi;
+  }
+  finishTalk(t) { t.score = t.claps - t.boos; t.done = true; this.say(t.side, `${t.side === P ? 'Your' : 'Their'} talk: ${t.claps} claps, ${t.boos} boos, ${t.score} all told.`); }
+
+  async run(agent, hooks = {}) {
+    const H = async (k, ...a) => { if (hooks[k]) await hooks[k](...a); };
+    await H('turnStart');
+    while (!this.over) {
+      if (this.side === P) await agent.playTurn(this);
+      else {
+        for (const u of this.order(N)) {
+          if (this.over) break;
+          if (u.sulk || u.gone || u.acted) continue;
+          const p = this.plan(u);
+          if (!p) continue;
+          await H('enemyPlan', u, p);
+          this.moveUnit(u, p.x, p.y);
+          const a = this.actions(u).find(a => a.kind === p.act.kind && a.target === p.act.target && a.id === p.act.id && a.x === p.act.x && a.y === p.act.y) || { kind: 'wait' };
+          this.act(u, a);
+          await H('enemyActed', u, a);
+        }
+      }
+      if (this.over) break;
+      if (!this.endTurn()) break;
+      await H('turnStart');
+    }
+    if (!this.over) {
+      this.over = true;
+      const order = this.crowd[P].length <= this.crowd[N].length ? [N, P] : [P, N];
+      const res = {};
+      for (const side of order) {
+        const t = this.startTalk(side);
+        await H('talkStart', t);
+        while (t.played.length < t.slidesMax) {
+          const i = side === P ? await agent.chooseSlide(t, this) : this.bestSlide(t);
+          this.playSlide(t, i);
+          await H('talkUpdate', t);
+          if (t.pending) {
+            this.resolveHeckle(t, side === P ? await agent.chooseHeckle(t, this) : false);
+            await H('talkUpdate', t);
+          }
+        }
+        this.finishTalk(t);
+        res[side] = t.score;
+        await H('talkEnd', t);
+      }
+      this.how = 'talk';
+      this.winner = res[P] > res[N] ? P : res[N] > res[P] ? N : this.crowd[P].length > this.crowd[N].length ? P : this.crowd[N].length > this.crowd[P].length ? N : NONE;
+      this.scores = res;
+    }
+    await H('matchEnd');
+    return { winner: this.winner, how: this.how, scores: this.scores, breaks: this.breaks, crowd: [this.crowd[P].length, this.crowd[N].length] };
   }
 }
-if (typeof module !== 'undefined') module.exports = { Game, A, P, N, NONE, K, RO, PLAYABLE, ROLE_STATS, TASTE, ROOMS, EDGES, distances, pathTo };
+if (typeof module !== 'undefined') module.exports = { Game, A, P, N, NONE, RO, PLAYABLE, ROLE_STATS, buildMap };
 // ==/ENGINE==
 
 </script>
@@ -920,220 +980,227 @@ if (typeof module !== 'undefined') module.exports = { Game, A, P, N, NONE, K, RO
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const YOU = '#b8322a', THEM = '#2a5db0', INK = '#1f2440', PAD = '#fbf1a9', HI = '#ff9fd2';
-const BW = 186, BH = 134;
+const CS = 32, OX = 4, OY = 6;
 const RELAX = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const sleep = ms => new Promise(r => setTimeout(r, RELAX ? Math.min(ms, 120) : ms));
+const SHORT = ['CEO', 'Eng', 'IT', 'HR', 'Mkt', 'Sal', 'Law', 'Int', 'Stf'];
 const HECKLES = ['Could have been an email!', 'Is this going to be on the test?', 'Next slide, please!', 'Who signed off on this?',
-  'Louder for the people at the stream!', 'Does it scale, though?', 'We tried that in 2019.'];
+  'We tried that in 2019.', 'Does it scale, though?', 'Louder for the people at the water cooler!'];
+const LABELS = [[3, 1, 'Your office'], [27, 1, 'Their office'], [9, 1, 'Data & Story'], [21, 1, 'Story & Data'],
+  [15, 1, 'The Rock'], [9, 17, 'Gadget & Snacks'], [21, 17, 'Snacks & Gadget'], [3, 12, 'Break room'], [27, 12, 'Break room'],
+  [15, 8, 'Lobby'], [15, 12, 'Water cooler']];
 
 let G = null;
-const UI = { await: null, filter: null, hover: null, theirPath: null, seenLog: 0 };
-const sleep = ms => new Promise(r => setTimeout(r, RELAX ? Math.min(ms, 150) : ms));
-
-function xy(id) { const p = ROOMS[id].plan; return [20 + p[0] * 1000, 20 + p[1] * 720]; }
+const UI = { turn: null, sel: null, hover: null, plan: null, seen: 0 };
+const cx = x => OX + x * CS + CS / 2, cy = y => OY + y * CS + CS / 2;
 
 function banner(text, ms = 1100) {
   const b = $('#banner'); b.textContent = text; b.classList.add('on');
   return sleep(ms).then(() => b.classList.remove('on'));
 }
-
-// --- the board ---------------------------------------------------------------
-function arcPath(cx, cy, r, frac) {
-  if (frac >= 0.999) return `M ${cx} ${cy - r} a ${r} ${r} 0 1 1 -0.01 0`;
-  const a = -Math.PI / 2 + frac * Math.PI * 2;
-  const x = cx + r * Math.cos(a), y = cy + r * Math.sin(a);
-  return `M ${cx} ${cy - r} A ${r} ${r} 0 ${frac > 0.5 ? 1 : 0} 1 ${x.toFixed(1)} ${y.toFixed(1)}`;
+function unitTitle(u) {
+  return `${u.name}, ${u.kind === 'contractor' ? 'contractor' : ROLE_NAME[u.job]}${u.leader ? ' (leader)' : ''}. Morale ${u.morale}/${u.max}. ` +
+    `Charm ${u.stats[0]}, Guile ${u.stats[1]}, Hustle ${u.stats[2]}, Grit ${u.stats[3]}. Wants ${TASTE[u.taste]}. Carrying ${u.cards.length}.`;
 }
 
-function pipTitle(p) {
-  let s = `${p.name}, ${ROLE_NAME[p.role]}: ${KIND_NAME[p.kind]}`;
-  if (p.side === P) s += ', yours'; else if (p.side === N) s += ', theirs';
-  s += `. Wants ${TASTE[p.taste]}.`;
-  if (p.kind === K.NEUTRAL && p.curiousFor !== NONE && p.curiosity > 0)
-    s += ` ${p.curiosity >= A.CURIOUS_AT ? 'Curious' : 'Warming'} about ${p.curiousFor === P ? 'you' : 'them'} (${p.curiosity.toFixed(1)}).`;
-  if (p.resolve) s += ' Shielded this round.';
-  return s;
-}
-
-function pip(p, x, y) {
-  const col = p.side === P ? YOU : p.side === N ? THEM : null;
-  let g = `<g><title>${esc(pipTitle(p))}</title>`;
-  const glyph = TASTE_GLYPH[p.taste];
-  let light = true;
-  switch (p.kind) {
-    case K.NEUTRAL: {
-      light = false;
-      g += `<circle cx="${x}" cy="${y}" r="10" fill="#fffdf6" stroke="${INK}" stroke-width="1.4"/>`;
-      if (p.curiousFor !== NONE && p.curiosity > 0) {
-        const c = p.curiousFor === P ? YOU : THEM;
-        g += `<path d="${arcPath(x, y, 13, p.curiosity / A.CUR_MAX)}" fill="none" stroke="${c}" stroke-width="3" stroke-linecap="round"/>`;
-      }
-      break;
-    }
-    case K.FOLLOWER: g += `<circle cx="${x}" cy="${y}" r="10.5" fill="${col}" stroke="${INK}" stroke-width="1.4"/>`; break;
-    case K.INFLUENCER:
-      g += `<circle cx="${x}" cy="${y}" r="10.5" fill="${col}" stroke="${INK}" stroke-width="1.4"/>`;
-      g += `<text x="${x + 9}" y="${y - 6}" font-size="11" fill="${INK}">★</text>`; break;
-    case K.LOVER:
-      g += `<path d="M ${x} ${y + 11} C ${x - 17} ${y - 1}, ${x - 8} ${y - 15}, ${x} ${y - 6} C ${x + 8} ${y - 15}, ${x + 17} ${y - 1}, ${x} ${y + 11} Z" fill="${col}" stroke="${INK}" stroke-width="1.4"/>`; break;
-    case K.WAGE:
-      light = false;
-      g += `<rect x="${x - 9}" y="${y - 9}" width="18" height="18" fill="#cfcab7" stroke="${col}" stroke-width="2.4"/>`; break;
-    case K.HATER:
-    case K.BULLY: {
-      const r = p.kind === K.BULLY ? 11 : 9;
-      g += `<rect x="${x - r}" y="${y - r}" width="${2 * r}" height="${2 * r}" fill="${col}" stroke="${INK}" stroke-width="${p.kind === K.BULLY ? 3 : 1.4}"/>`;
-      g += `<text x="${x}" y="${y + 4.5}" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">✕</text></g>`;
-      return g;
-    }
-  }
-  if (p.resolve) g += `<circle cx="${x}" cy="${y}" r="15" fill="none" stroke="${INK}" stroke-width="1" stroke-dasharray="2 2"/>`;
-  g += `<text x="${x}" y="${y + 4}" text-anchor="middle" font-size="12" fill="${light ? '#fff' : INK}">${glyph}</text></g>`;
-  return g;
-}
-
-function token(side, x, y) {
-  const c = side === P ? YOU : THEM;
-  return `<g><title>${side === P ? 'You' : 'Your nemesis'}</title>
-    <circle cx="${x}" cy="${y}" r="17" fill="${c}" stroke="${INK}" stroke-width="2.5"/>
-    <text class="hand" x="${x}" y="${y + 6}" text-anchor="middle" font-size="20" font-weight="700" fill="#fff">${side === P ? 'you' : 'them'}</text></g>`;
-}
-
+// --- the floor ---------------------------------------------------------------
 function drawBoard() {
-  const svg = $('#board');
-  const yourTurn = !!UI.await;
-  const reach = yourTurn ? G.reachFrom(P, G.pos[P]) : {};
-  let path = [];
-  if (UI.hover) path = pathTo(G.pos[P], UI.hover.station, [G.pos[N]]);
-  else if (UI.theirPath) path = UI.theirPath;
-  const onPath = (a, b) => { for (let i = 0; i + 1 < path.length; i++) if ((path[i] === a && path[i + 1] === b) || (path[i] === b && path[i + 1] === a)) return true; return false; };
-
+  const sel = UI.sel ? G.byId(UI.sel) : null;
+  const mine = UI.turn && sel && sel.side === P;
+  const reach = mine && !sel.moved ? G.reach(sel).tiles : {};
+  const W = A.W, H = A.H;
   let s = `<defs>
-    <filter id="pen" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="4"/><feDisplacementMap in="SourceGraphic" scale="2.6"/></filter>
-    <pattern id="hatch" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(40)"><line x1="0" y1="0" x2="0" y2="9" stroke="${THEM}" stroke-width="2" opacity=".45"/></pattern>
+    <filter id="pen" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" seed="4"/><feDisplacementMap in="SourceGraphic" scale="2"/></filter>
+    <pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(40)"><line x1="0" y1="0" x2="0" y2="7" stroke="${INK}" stroke-width="3"/></pattern>
+    <pattern id="waves" width="16" height="8" patternUnits="userSpaceOnUse"><path d="M0 4 Q4 0 8 4 T16 4" fill="none" stroke="${THEM}" stroke-width="1.6"/></pattern>
   </defs>`;
-  for (let y = 36; y < 720; y += 30) s += `<line x1="0" x2="1000" y1="${y}" y2="${y}" stroke="#9cc3d9" stroke-width="1" opacity=".75"/>`;
-  s += `<line x1="46" x2="46" y1="0" y2="720" stroke="#e0736f" stroke-width="1.5"/><line x1="50" x2="50" y1="0" y2="720" stroke="#e0736f" stroke-width="1"/>`;
-
-  // corridors
-  for (const [a, b, c] of EDGES) {
-    const [x1, y1] = xy(a), [x2, y2] = xy(b);
-    if (onPath(a, b)) s += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${UI.hover ? HI : THEM}" stroke-width="16" stroke-linecap="round" opacity=".6"/>`;
-    s += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${INK}" stroke-width="2.2" filter="url(#pen)" stroke-dasharray="${c > 1 ? '9 5' : ''}"/>`;
+  for (let y = 8; y < 620; y += 24) s += `<line x1="0" x2="1000" y1="${y}" y2="${y}" stroke="#9cc3d9" stroke-width="1" opacity=".6"/>`;
+  // floor features
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const t = G.map[y][x], X = OX + x * CS, Y = OY + y * CS;
+    if (t === 'a' || t === 'b') s += `<rect x="${X}" y="${Y}" width="${CS}" height="${CS}" fill="${t === 'a' ? YOU : THEM}" opacity=".08"/>`;
+    if (t === 'R') s += `<rect x="${X + 1}" y="${Y + 1}" width="${CS - 2}" height="${CS - 2}" fill="#d9cfa0" stroke="${INK}" stroke-width="1"/>`;
+    if (t === 'L') s += `<circle cx="${X + 16}" cy="${Y + 16}" r="12" fill="#fff" stroke="${INK}" stroke-width="1.6"/><text x="${X + 16}" y="${Y + 22}" text-anchor="middle" class="hand" font-size="20" font-weight="700" fill="${INK}">$</text>`;
+    if (reach[key(x, y)] !== undefined) s += `<rect x="${X + 2}" y="${Y + 2}" width="${CS - 4}" height="${CS - 4}" fill="${HI}" opacity=".45" class="tile" data-x="${x}" data-y="${y}"/>`;
   }
-  // rooms
-  for (const id in ROOMS) {
-    const [cx, cy] = xy(id);
-    const x = cx - BW / 2, y = cy - BH / 2;
-    const lit = yourTurn && reach[id] !== undefined && id !== G.pos[N];
-    const theirs = id === G.pos[N];
-    const filtered = UI.filter === id;
-    s += `<g class="room" data-room="${id}" tabindex="0" role="button" aria-label="${ROOMS[id].name}${lit ? `, ${reach[id]} steps` : ''}">`;
-    s += `<rect x="${x}" y="${y}" width="${BW}" height="${BH}" fill="${PAD}"/>`;
-    if (lit) s += `<rect x="${x + 4}" y="${y + 4}" width="${BW - 8}" height="${BH - 8}" fill="${HI}" opacity=".42"/>`;
-    if (theirs) s += `<rect x="${x}" y="${y}" width="${BW}" height="${BH}" fill="url(#hatch)"/>`;
-    s += `<rect class="frame" x="${x}" y="${y}" width="${BW}" height="${BH}" fill="none" stroke="${INK}" stroke-width="${filtered ? 5 : 2.6}" filter="url(#pen)"/>`;
-    if (ROOMS[id].taste !== undefined) s += `<text x="${x + BW - 14}" y="${y + BH - 12}" text-anchor="end" font-size="54" fill="${INK}" opacity=".12">${TASTE_GLYPH[ROOMS[id].taste]}</text>`;
-    s += `<text class="hand" x="${x + 10}" y="${y + 27}" font-size="27" font-weight="700" fill="${INK}">${ROOMS[id].short}</text>`;
-    if (lit && id !== G.pos[P]) {
-      s += `<circle cx="${x + BW - 18}" cy="${y + 18}" r="13" fill="#fff" stroke="${YOU}" stroke-width="2"/>`;
-      s += `<text class="hand" x="${x + BW - 18}" y="${y + 25}" text-anchor="middle" font-size="22" font-weight="700" fill="${YOU}">${reach[id]}</text>`;
+  // walls, as one inked path
+  let wp = '';
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (G.map[y][x] === '#') wp += `M${OX + x * CS} ${OY + y * CS}h${CS}v${CS}h-${CS}z`;
+  s += `<path d="${wp}" fill="url(#hatch)" stroke="${INK}" stroke-width="1.2" filter="url(#pen)"/>`;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const t = G.map[y][x], X = OX + x * CS, Y = OY + y * CS;
+    if (t === '~') s += `<rect x="${X}" y="${Y}" width="${CS}" height="${CS}" fill="#cfe3f3"/><rect x="${X}" y="${Y}" width="${CS}" height="${CS}" fill="url(#waves)"/>`;
+    if (DESKS[t] !== undefined) {
+      const st = G.stock[key(x, y)];
+      s += `<g><title>${TASTE[DESKS[t]]} desk, ${st} card${st === 1 ? '' : 's'} left</title><rect x="${X + 2}" y="${Y + 3}" width="${CS - 4}" height="${CS - 6}" fill="#fff" stroke="${INK}" stroke-width="2" filter="url(#pen)"/>
+        <text x="${X + 16}" y="${Y + 20}" text-anchor="middle" font-size="15" fill="${INK}">${TASTE_GLYPH[DESKS[t]]}</text>`;
+      for (let i = 0; i < st; i++) s += `<circle cx="${X + 9 + i * 7}" cy="${Y + 26}" r="2.2" fill="${INK}"/>`;
+      s += `</g>`;
     }
-    // people
-    const here = G.people.filter(p => p.room === id)
-      .sort((a, b) => (a.side === P ? 0 : a.side === NONE ? 1 : 2) - (b.side === P ? 0 : b.side === NONE ? 1 : 2) || a.kind - b.kind || a.id - b.id);
-    const cols = here.length > 18 ? 7 : 6, dx = here.length > 18 ? 24 : 28;
-    here.forEach((p, i) => {
-      const px = x + 20 + (i % cols) * dx, py = y + 52 + Math.floor(i / cols) * 27;
-      if (py < y + BH - 4) s += pip(p, px, py);
-    });
-    if (here.length > cols * 3) s += `<text x="${x + BW - 8}" y="${y + BH - 6}" text-anchor="end" font-size="12" fill="${INK}">+${here.length - cols * 3}</text>`;
+    if (t === 'C' || t === 'c') s += `<g><title>${t === 'C' ? 'Supply closet: two good slides inside' : 'An emptied supply closet'}</title><rect x="${X + 2}" y="${Y + 2}" width="${CS - 4}" height="${CS - 4}" fill="${t === 'C' ? '#fff3c4' : 'none'}" stroke="${INK}" stroke-width="2" ${t === 'c' ? 'stroke-dasharray="3 3"' : ''}/>
+      ${t === 'C' ? `<text x="${X + 16}" y="${Y + 22}" text-anchor="middle" font-size="16" fill="${INK}">★</text>` : ''}</g>`;
+  }
+  for (const [x, y, l] of LABELS) s += `<text class="hand" x="${cx(x)}" y="${OY + y * CS + 11}" text-anchor="middle" font-size="17" fill="${INK}" opacity=".55">${l}</text>`;
+  // loot on the floor
+  for (const k in G.loot) {
+    const [x, y] = k.split(',').map(Number), X = OX + x * CS, Y = OY + y * CS;
+    s += `<g><title>${G.loot[k].length} card${G.loot[k].length === 1 ? '' : 's'} on the floor: ${esc(G.loot[k].map(c => c.name).join(', '))}</title>`;
+    for (let i = 0; i < Math.min(3, G.loot[k].length); i++) s += `<rect x="${X + 7 + i * 3}" y="${Y + 6 + i * 3}" width="14" height="18" fill="#fff" stroke="${INK}" stroke-width="1.5" transform="rotate(${-8 + i * 8} ${X + 16} ${Y + 16})"/>`;
     s += `</g>`;
   }
-  // presenters on the top edge of their rooms
-  const [px, py] = xy(G.pos[P]), [nx, ny] = xy(G.pos[N]);
-  s += token(P, px - BW / 2 + 24, py - BH / 2 - 19);
-  s += token(N, nx + BW / 2 - 24, ny - BH / 2 - 19);
+  // the path of the move being planned
+  const path = UI.plan || (UI.hover && UI.hover.path) || [];
+  if (path.length > 1) s += `<polyline points="${path.map(([x, y]) => `${cx(x)},${cy(y)}`).join(' ')}" fill="none" stroke="${UI.plan ? THEM : YOU}" stroke-width="4" stroke-dasharray="7 5" stroke-linecap="round" opacity=".8"/>`;
+  if (UI.hover && UI.hover.x !== undefined) s += `<rect x="${OX + UI.hover.x * CS}" y="${OY + UI.hover.y * CS}" width="${CS}" height="${CS}" fill="none" stroke="${YOU}" stroke-width="3" stroke-dasharray="4 3"/>`;
+  // neutrals
+  for (const n of G.neutrals) {
+    const X = cx(n.x), Y = cy(n.y);
+    s += `<g><title>${esc(n.name)}, ${ROLE_NAME[n.role]}. Wants ${TASTE[n.taste]}.${n.amt ? ` Warming to ${n.for === P ? 'you' : 'them'} (${n.amt} of ${A.JOIN_AT}).` : ''}</title>
+      <circle cx="${X}" cy="${Y}" r="10" fill="#fffdf6" stroke="${INK}" stroke-width="1.4"/>`;
+    if (n.amt > 0) s += `<circle cx="${X}" cy="${Y}" r="13" fill="none" stroke="${n.for === P ? YOU : THEM}" stroke-width="3" stroke-dasharray="${(n.amt / A.JOIN_AT) * 81.7} 99"/>`;
+    s += `<text x="${X}" y="${Y + 4}" text-anchor="middle" font-size="11" fill="${INK}">${TASTE_GLYPH[n.taste]}</text></g>`;
+  }
+  // units
+  for (const u of G.units) {
+    if (u.sulk || u.gone || u.x < 0) continue;
+    const X = cx(u.x), Y = cy(u.y), c = u.side === P ? YOU : THEM;
+    const spent = u.side === G.side && u.acted;
+    const isSel = sel === u;
+    s += `<g class="unit" data-id="${u.id}" style="cursor:pointer" opacity="${spent ? 0.5 : 1}"><title>${esc(unitTitle(u))}</title>`;
+    if (isSel) s += `<circle cx="${X}" cy="${Y}" r="17" fill="${HI}"/>`;
+    if (u.kind === 'contractor') s += `<rect x="${X - 12}" y="${Y - 12}" width="24" height="24" rx="4" fill="${c}" stroke="${INK}" stroke-width="2"/>`;
+    else s += `<circle cx="${X}" cy="${Y}" r="13" fill="${c}" stroke="${INK}" stroke-width="${u.leader ? 3.5 : 2}"/>`;
+    if (u.leader) s += `<circle cx="${X}" cy="${Y}" r="9.5" fill="none" stroke="#fff" stroke-width="1.2"/>`;
+    s += `<text x="${X}" y="${Y + 4}" text-anchor="middle" font-size="${u.kind === 'contractor' ? 9 : 10}" font-weight="700" fill="#fff">${u.kind === 'contractor' ? u.name.slice(0, 3) : SHORT[u.job]}</text>`;
+    const f = u.morale / u.max;
+    s += `<rect x="${X - 13}" y="${Y + 14}" width="26" height="4" fill="#fff" stroke="${INK}" stroke-width=".8"/><rect x="${X - 13}" y="${Y + 14}" width="${26 * f}" height="4" fill="${f < 0.34 ? '#e06a2a' : c}"/>`;
+    if (u.cards.length) s += `<rect x="${X + 8}" y="${Y - 16}" width="10" height="12" fill="#fff" stroke="${INK}" stroke-width="1"/><text x="${X + 13}" y="${Y - 7}" text-anchor="middle" font-size="9" fill="${INK}">${u.cards.length}</text>`;
+    if (u.rooted) s += `<text x="${X - 15}" y="${Y - 8}" font-size="12" fill="${INK}">⛓</text>`;
+    s += `</g>`;
+  }
+  const svg = $('#board');
   svg.innerHTML = s;
-
-  svg.querySelectorAll('.room').forEach(el => {
-    const go = () => { if (!UI.await) return; UI.filter = UI.filter === el.dataset.room ? null : el.dataset.room; render(); };
-    el.addEventListener('click', go);
-    el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
-  });
+  svg.querySelectorAll('.tile').forEach(el => el.addEventListener('click', () => {
+    if (!UI.turn || !sel) return;
+    G.moveUnit(sel, +el.dataset.x, +el.dataset.y);
+    render();
+  }));
+  svg.querySelectorAll('.unit').forEach(el => el.addEventListener('click', e => {
+    e.stopPropagation();
+    const u = G.byId(+el.dataset.id);
+    if (UI.turn && sel && sel.side === P && !sel.acted && u.side === N) {
+      const a = G.actions(sel).find(a => a.kind === 'confront' && a.target === u.id);
+      if (a) { doAct(sel, a); return; }
+    }
+    if (UI.turn && sel && sel.side === P && !sel.moved && u === sel) return;
+    UI.sel = u.id; render();
+  }));
 }
 
 function legend() {
-  const sw = inner => `<svg width="30" height="26" viewBox="-15 -13 30 26">${inner}</svg>`;
-  const fake = (kind, side, extra = {}) => pip({ id: 0, name: '', role: 8, taste: 0, kind, side, curiosity: 0, curiousFor: NONE, resolve: false, ...extra }, 0, 0);
-  const items = [
-    [fake(K.FOLLOWER, P), 'yours'], [fake(K.FOLLOWER, N), 'theirs'],
-    [fake(K.NEUTRAL, NONE, { curiosity: 2.2, curiousFor: P }), 'curious about you'],
-    [fake(K.LOVER, P), 'lover'], [fake(K.INFLUENCER, P), 'influencer'], [fake(K.WAGE, P), 'wage slave, not a point'],
-    [fake(K.HATER, P), 'heckler, not a point'],
-  ];
-  $('#legend').innerHTML = items.map(([g, t]) => `<span>${sw(g)}${t}</span>`).join('') +
-    `<span>${TASTE.map((t, i) => `${TASTE_GLYPH[i]} ${t}`).join(', ')}</span><span>dashed corridor: 2 steps</span>`;
+  $('#legend').innerHTML = `<span><svg width="26" height="26" viewBox="-13 -13 26 26"><circle r="11" fill="${YOU}" stroke="${INK}" stroke-width="3"/></svg>your leader</span>
+    <span><svg width="26" height="26" viewBox="-13 -13 26 26"><circle r="11" fill="${THEM}" stroke="${INK}" stroke-width="2"/></svg>their people</span>
+    <span><svg width="26" height="26" viewBox="-13 -13 26 26"><rect x="-10" y="-10" width="20" height="20" rx="3" fill="${YOU}" stroke="${INK}" stroke-width="2"/></svg>contractor</span>
+    <span><svg width="26" height="26" viewBox="-13 -13 26 26"><circle r="9" fill="#fffdf6" stroke="${INK}"/><circle r="11.5" fill="none" stroke="${YOU}" stroke-width="3" stroke-dasharray="36 99"/></svg>neutral, warming to you</span>
+    <span><svg width="26" height="26" viewBox="0 0 26 26"><rect x="5" y="4" width="14" height="18" fill="#fff" stroke="${INK}" stroke-width="1.5"/></svg>loot on the floor</span>
+    <span>★ supply closet &nbsp; $ hire help &nbsp; ${TASTE.map((t, i) => `${TASTE_GLYPH[i]} ${t}`).join(', ')}</span>`;
 }
 
 // --- the side column ---------------------------------------------------------
 function render() {
-  if (!G) return;
+  if (!G || !G.jobs) return;
   drawBoard();
-  const a = G.count(P), b = G.count(N);
-  $('#score').innerHTML = `<span class="y">you ${a} <small>${G.points[P]} pts</small></span><span class="t">them ${b} <small>${G.points[N]} pts</small></span>`;
-  $('#where').textContent = G.over ? 'Match over' : `Round ${G.round} of ${A.ROUNDS}, move ${G.move} of ${A.MOVES}`;
-
-  const turn = UI.await ? '<p class="turn you">Your move</p>' : G.turn === N ? '<p class="turn them">Their move</p>' : '<p class="turn">At the rock</p>';
-  const hand = G.satchel[P];
+  const a = G.active(P).length, b = G.active(N).length;
+  $('#score').innerHTML = `<span class="y">you $${G.budget[P]} <small>${G.crowd[P].length} in crowd</small></span><span class="t">them $${G.budget[N]} <small>${G.crowd[N].length} in crowd</small></span>`;
+  $('#where').textContent = G.over ? 'Match over' : `Turn ${G.turn} of ${A.TURNS}`;
   const d = G.demand(P);
+  const own = c => G.consultants.filter(x => x.side === c);
   const flags = [];
-  if (G.rigged[P]) flags.push('Your projector is rigged');
+  if (G.rigged[P]) flags.push('Your projector is rigged. Get someone to the Rock and check it');
   if (G.rigged[N]) flags.push('You rigged their projector');
-  flags.push(...G.sablog[P]);
-  const party = s => G.parties[s].map(r => ROLE_NAME[r]).join(', ') || 'nobody';
-  $('#status').innerHTML = `<h2>The state of play</h2>${turn}
-    <p class="who"><b>You:</b> ${ROLE_NAME[G.roles[P]]}, ${G.steps(P)} steps a move. ${ROLE_RULE[G.roles[P]] ? esc(ROLE_RULE[G.roles[P]][0].toUpperCase() + ROLE_RULE[G.roles[P]].slice(1)) + ' while one claps for you.' : ''}</p>
-    <p class="who"><b>Them:</b> ${ROLE_NAME[G.roles[N]]}, with ${esc(party(N))}. ${G.satchel[N].length} card${G.satchel[N].length === 1 ? '' : 's'} in hand.</p>
-    <p style="margin-top:8px">Your hand</p>
-    <div class="chips">${hand.length ? hand.map(c => `<span class="chip ${c.taste < 0 ? 'dud' : ''}">${c.taste >= 0 ? TASTE_GLYPH[c.taste] + ' ' : ''}${esc(c.name)}</span>`).join('') : '<span class="who">Empty. Visit a desk.</span>'}</div>
-    <p>Who'd come to your talk wants</p>
+  $('#status').innerHTML = `<h2>${UI.turn ? 'Your turn' : G.side === N ? 'Their turn' : 'The office'}</h2>
+    <p class="who">${a} of yours on the floor, ${b} of theirs. You hold ${G.hand(P).length} cards between you; they hold ${G.hand(N).length}.</p>
+    <p>Your crowd and party want</p>
     <div class="wants">${TASTE.map((t, i) => `<div><b>${d[i]}</b><span>${TASTE_GLYPH[i]} ${t}</span></div>`).join('')}</div>
+    <div class="cons"><b>Consultants</b><ul>${G.consultants.map(c => `<li>${esc(c.name)}: ${c.side === P ? '<b>yours</b>' : c.side === N ? `<span style="color:${THEM}">theirs, paid $${c.loyalty}</span>` : `free, $${c.price}`}. <span class="who">${esc(c.what)}.</span></li>`).join('')}</ul></div>
     ${flags.length ? `<p class="flags">${flags.map(esc).join('. ')}.</p>` : ''}`;
-
-  const cards = $('#cards');
-  if (UI.await) {
-    $('#movesTitle').textContent = 'Your move';
-    let opts = UI.await.opts;
-    if (UI.filter) opts = opts.filter(o => o.station === UI.filter);
-    $('#filter').innerHTML = UI.filter ? `Only the ${esc(ROOMS[UI.filter].name)}. <button id="clearf">Show every card</button>`
-      : 'Hover a card to see its route. Click a room to see only its cards.';
-    const sorted = [...opts.filter(o => o.enabled), ...opts.filter(o => !o.enabled)];
-    const TRICK = ['pinch', 'rumour', 'rig'];
-    cards.innerHTML = sorted.length ? sorted.map((o, i) => `<button class="mv ${TRICK.includes(o.kind) ? 'trick' : ''}" data-i="${UI.await.opts.indexOf(o)}" ${o.enabled ? '' : 'disabled'}>
-      <span class="l">${esc(o.label)}</span>
-      <span class="st">${o.enabled ? (o.steps === 0 ? 'here' : `${o.steps} step${o.steps === 1 ? '' : 's'}`) : ''}</span>
-      <span class="s">${esc(o.enabled ? o.sub : o.why)}</span></button>`).join('') : '<p class="waiting">Nothing to do in that room this move.</p>';
-    cards.querySelectorAll('.mv').forEach(btn => {
-      const o = UI.await.opts[+btn.dataset.i];
-      btn.addEventListener('click', () => { const r = UI.await.res; UI.await = null; UI.hover = null; UI.filter = null; r(o); });
-      btn.addEventListener('mouseenter', () => { UI.hover = o; drawBoard(); });
-      btn.addEventListener('focus', () => { UI.hover = o; drawBoard(); });
-      btn.addEventListener('mouseleave', () => { UI.hover = null; drawBoard(); });
-    });
-    const cf = $('#clearf'); if (cf) cf.onclick = () => { UI.filter = null; render(); };
-  } else {
-    $('#movesTitle').textContent = G.turn === N ? 'Their move' : 'Waiting';
-    $('#filter').textContent = '';
-    cards.innerHTML = `<p class="waiting">${G.turn === N ? 'Your nemesis is choosing…' : 'Nothing for you to play right now.'}</p>`;
-  }
-
-  const log = G.log.slice(-40).reverse();
-  const fresh = G.log.length - UI.seenLog;
+  renderUnit();
+  renderRoster();
+  const log = G.log.slice(-60).reverse();
+  const fresh = G.log.length - UI.seen;
   $('#log').innerHTML = log.map((e, i) => `<li class="s${e.side} ${i < fresh ? 'new' : ''}">${esc(e.text)}</li>`).join('');
-  UI.seenLog = G.log.length;
+  UI.seen = G.log.length;
 }
 
-// --- modal sheets ------------------------------------------------------------
+function renderUnit() {
+  const card = $('#unitcard');
+  const u = UI.sel ? G.byId(UI.sel) : null;
+  if (!u || u.sulk || u.gone) {
+    card.innerHTML = `<h2>${UI.turn ? 'Pick someone' : 'Watching'}</h2><p class="waiting">${UI.turn ? 'Click one of your people on the floor.' : 'Their party is moving…'}</p>
+      ${UI.turn ? `<div class="ctl"><button class="btn" id="endturn">End turn</button></div>` : ''}`;
+    const e = $('#endturn'); if (e) e.onclick = endTurn;
+    return;
+  }
+  const mine = u.side === P;
+  const ab = u.kind === 'staff' && u.job >= 0 ? ABILITY[u.job] : null;
+  let h = `<div class="unit"><h3 style="color:${mine ? YOU : THEM}">${esc(u.name)}</h3>
+    <p class="job">${u.kind === 'contractor' ? `Contractor, leaves after turn ${u.expires - 1}` : ROLE_NAME[u.job]}${u.leader ? ', leader' : ''}. Wants ${TASTE[u.taste]}. Moves ${G.moveOf(u)}.</p>
+    <div class="bar ${mine ? '' : 'them'}"><i style="width:${100 * u.morale / u.max}%"></i></div><p class="who">Morale ${u.morale} of ${u.max}</p>
+    <div class="stats4">${STAT_NAME.map((n, i) => `<div><b>${u.stats[i]}</b>${n}</div>`).join('')}</div>
+    ${ab ? `<p class="abil"><b>${ab.name}</b>: ${esc(ab.what)}. ${u.cd ? `Ready in ${u.cd} turn${u.cd === 1 ? '' : 's'}.` : 'Ready.'}</p>` : ''}
+    <div class="chips">${u.cards.length ? u.cards.map(c => `<span class="chip">${TASTE_GLYPH[c.taste]} ${esc(c.name)} <small>q${c.q}</small></span>`).join('') : '<span class="who">No cards.</span>'}</div></div>`;
+  let acts = [];
+  if (UI.turn && mine) {
+    if (u.acted) h += `<p class="waiting">Done for this turn.</p>`;
+    else {
+      acts = G.actions(u);
+      if (!u.moved) h += `<p class="who">Click a pink tile to move, or act from here.</p>`;
+      h += `<div class="cards">${acts.map((o, i) => `<button class="mv ${o.kind === 'confront' ? 'attack' : ''} ${['rig', 'pickpocket'].includes(o.kind) ? 'trick' : ''}" data-i="${i}"><span class="l">${esc(o.label)}</span><span class="st"></span><span class="s">${esc(o.sub)}</span></button>`).join('')}</div>`;
+    }
+    h += `<div class="ctl">${u.from && !u.acted ? '<button class="btn alt" id="undo">Undo move</button>' : ''}<button class="btn" id="endturn">End turn</button></div>`;
+  }
+  card.innerHTML = h;
+  card.querySelectorAll('.mv').forEach(btn => {
+    const o = acts[+btn.dataset.i];
+    btn.onclick = () => doAct(u, o);
+    const on = () => { UI.hover = o.x !== undefined ? { x: o.x, y: o.y } : null; drawBoard(); };
+    btn.onmouseenter = on; btn.onfocus = on;
+    btn.onmouseleave = () => { UI.hover = null; drawBoard(); };
+  });
+  const un = $('#undo'); if (un) un.onclick = () => { G.undoMove(u); render(); };
+  const e = $('#endturn'); if (e) e.onclick = endTurn;
+}
+
+function renderRoster() {
+  const row = u => {
+    const where = u.gone ? 'gone' : u.sulk ? `sulking, back in ${u.sulk}` : `${u.morale}/${u.max}`;
+    return `<button class="rrow ${UI.sel === u.id ? 'on' : ''} ${(u.side === P && UI.turn && u.acted) || u.sulk ? 'done' : ''}" data-id="${u.id}" ${u.sulk || u.gone ? 'disabled' : ''}>
+      <span>${esc(u.name)} <small>${u.kind === 'contractor' ? 'contractor' : ROLE_NAME[u.job]}${u.cards.length ? `, ${u.cards.length} card${u.cards.length === 1 ? '' : 's'}` : ''}</small></span>
+      <span class="bar ${u.side === P ? '' : 'them'}"><i style="width:${100 * u.morale / u.max}%"></i></span><small>${where}</small></button>`;
+  };
+  const list = s => G.units.filter(u => u.side === s && !u.gone);
+  $('#rostercard').innerHTML = `<h2>The parties</h2><div class="roster">${list(P).map(row).join('')}</div>
+    <p class="who" style="margin:8px 0 4px">Theirs</p><div class="roster">${list(N).map(row).join('')}</div>`;
+  $('#rostercard').querySelectorAll('.rrow').forEach(b => b.onclick = () => { UI.sel = +b.dataset.id; render(); });
+}
+
+function nextUnit() {
+  const next = G.active(P).find(v => !v.acted);
+  UI.sel = next ? next.id : null;
+}
+function doAct(u, o) {
+  UI.hover = null;
+  G.act(u, o);
+  if (!G.over) nextUnit();
+  render();
+  if (G.over && UI.turn) { const r = UI.turn; UI.turn = null; r(); }
+}
+function endTurn() {
+  if (!UI.turn) return;
+  const r = UI.turn; UI.turn = null; UI.sel = null; r();
+}
+
+// --- sheets -------------------------------------------------------------------
 function sheet(html, wire) {
   $('#sheet').innerHTML = html;
   $('#veil').hidden = false;
@@ -1147,9 +1214,9 @@ function setupFlow() {
     const cfg = { role: 0, stats: [0, 0, 0, 0], party: [] };
     let base = [0, 0, 0, 0];
     const pageJob = () => sheet(`<h2>Who are you?</h2>
-      <p>Your job is a costume, a taste and a rule. The rule holds while anybody of that job is clapping for you, so buying their IT person unlocks their projector.</p>
+      <p>You lead a party through the office for twelve turns: arguing their people down, looting desks and closets, winning the crowd over. Then a final talk decides it, unless you break their whole party first.</p>
       <div class="jobs">${PLAYABLE.map(r => `<button class="job" data-r="${r}"><b>${ROLE_NAME[r]}</b>
-        <small>Wants ${ROLE_TASTES[r].map(t => TASTE[t]).join(' or ')}</small><small>${esc(ROLE_RULE[r])}</small>
+        <small>${ABILITY[r].name}: ${esc(ABILITY[r].what)}</small><small>Wants ${ROLE_TASTES[r].map(t => TASTE[t]).join(' or ')}</small>
         <small>${ROLE_STATS[r].map((v, i) => `${STAT_NAME[i]} ${v}`).join(', ')}</small></button>`).join('')}</div>`,
       el => el.querySelectorAll('.job').forEach(b => b.onclick = () => { cfg.role = +b.dataset.r; base = ROLE_STATS[cfg.role].slice(); cfg.stats = base.slice(); pageStats(); }));
     const pageStats = () => {
@@ -1159,19 +1226,19 @@ function setupFlow() {
           <button class="pm" data-i="${i}" data-d="-1" aria-label="less ${n}" ${cfg.stats[i] <= base[i] ? 'disabled' : ''}>−</button>
           <span class="v">${cfg.stats[i]}</span>
           <button class="pm" data-i="${i}" data-d="1" aria-label="more ${n}" ${left <= 0 || cfg.stats[i] >= A.STAT_MAX ? 'disabled' : ''}>+</button></div>`).join('')}
-        <p style="margin-top:10px">${left} point${left === 1 ? '' : 's'} left.</p>
-        <div class="row"><button class="btn alt" id="back">Pick another job</button><button class="btn" id="next">Choose colleagues</button></div>`,
+        <p style="margin-top:10px">${left} point${left === 1 ? '' : 's'} left. Morale is ${9 + 2 * cfg.stats[3]}; you move ${3 + Math.floor(cfg.stats[2] / 2)} tiles.</p>
+        <div class="row"><button class="btn alt" id="back">Pick another job</button><button class="btn" id="next">Choose your party</button></div>`,
         el => {
           el.querySelectorAll('.pm').forEach(b => b.onclick = () => { cfg.stats[+b.dataset.i] += +b.dataset.d; pageStats(); });
           el.querySelector('#back').onclick = pageJob;
           el.querySelector('#next').onclick = pageParty;
         });
     };
-    const pageParty = () => sheet(`<h2>Who comes with you?</h2>
-      <p>Up to four colleagues start on your side. Each one is a follower, and switches their job's rule on for you while they stay. Your nemesis brings as many as you do.</p>
-      <div class="jobs">${PLAYABLE.map(r => `<button class="job" data-r="${r}" ${cfg.party.length >= 4 ? 'disabled' : ''}><b>+ ${ROLE_NAME[r]}</b><small>${esc(ROLE_RULE[r])}</small></button>`).join('')}</div>
-      <h3>With you</h3><div class="chips">${cfg.party.length ? cfg.party.map((r, i) => `<button class="chip" data-x="${i}" aria-label="remove ${ROLE_NAME[r]}">${ROLE_NAME[r]} ✕</button>`).join('') : '<span class="who">Nobody yet.</span>'}</div>
-      <div class="row"><button class="btn alt" id="back">Back to stats</button><button class="btn" id="go">Begin the match</button></div>`,
+    const pageParty = () => sheet(`<h2>Who fights beside you?</h2>
+      <p>Up to four colleagues, each a unit you move, with their job's ability. Your nemesis brings as many as you do.</p>
+      <div class="jobs">${PLAYABLE.map(r => `<button class="job" data-r="${r}" ${cfg.party.length >= 4 ? 'disabled' : ''}><b>+ ${ROLE_NAME[r]}</b><small>${ABILITY[r].name}: ${esc(ABILITY[r].what)}</small></button>`).join('')}</div>
+      <h3>Your party</h3><div class="chips">${cfg.party.length ? cfg.party.map((r, i) => `<button class="chip" data-x="${i}" aria-label="remove ${ROLE_NAME[r]}">${ROLE_NAME[r]} ✕</button>`).join('') : '<span class="who">Just you so far. One break and you are out.</span>'}</div>
+      <div class="row"><button class="btn alt" id="back">Back to stats</button><button class="btn" id="go">Into the office</button></div>`,
       el => {
         el.querySelectorAll('.job').forEach(b => b.onclick = () => { if (cfg.party.length < 4) cfg.party.push(+b.dataset.r); pageParty(); });
         el.querySelectorAll('[data-x]').forEach(b => b.onclick = () => { cfg.party.splice(+b.dataset.x, 1); pageParty(); });
@@ -1184,12 +1251,10 @@ function setupFlow() {
 
 function talkSheet(t, mode, resolve) {
   const mine = t.side === P;
-  const own = t.audience.filter(p => p.side === t.side).length;
-  const booers = t.booers.length;
   const fans = TASTE.map((_, i) => G.fans(t, i));
   const tot = Math.max(t.claps + t.boos, 1);
-  let body = `<h2>${mine ? 'Your talk' : 'Their talk'}, round ${G.round}</h2>
-    <p>At the rock: ${own} of ${mine ? 'yours' : 'theirs'}, ${t.spectators.length} curious from the grass, ${booers} here to boo.${t.bounced ? ' HR turned a bully away at the door.' : ''}${t.blanked ? ` The projector was rigged: ${esc(t.blanked.name)} is now a blank slide.` : ''}</p>
+  let body = `<h2>${mine ? 'Your final talk' : 'Their final talk'}</h2>
+    <p>In the room: ${t.audience.length} on ${mine ? 'your' : 'their'} side, ${t.booers.length} of ${mine ? 'theirs' : 'yours'} here to boo.${t.blanked ? ` The projector was rigged: ${esc(t.blanked.name)} is now a blank slide.` : ''}</p>
     <div class="wants">${TASTE.map((n, i) => `<div><b>${fans[i]}</b><span>${TASTE_GLYPH[i]} ${n}</span></div>`).join('')}</div>
     <div class="meter ${mine ? '' : 'them'}"><div class="c" style="width:${100 * t.claps / tot}%"></div><div class="b" style="width:${100 * t.boos / tot}%"></div></div>
     <div class="tally">${t.claps} claps, ${t.boos} boos</div>
@@ -1198,80 +1263,70 @@ function talkSheet(t, mode, resolve) {
   if (mode === 'slide') {
     body += `<h3>Slide ${t.played.length + 1} of ${t.slidesMax}</h3><div class="row">${t.hand.map((c, i) => `<button class="slide" data-i="${i}">
       <b>${c.taste >= 0 ? TASTE_GLYPH[c.taste] + ' ' : ''}${esc(c.name)}</b>
-      <small>${c.taste < 0 ? 'blank; boos' : `${fans[c.taste]} in the crowd want ${TASTE[c.taste]}; about ${G.slideClaps(t, c)} claps`}</small></button>`).join('')}</div>`;
+      <small>${c.taste < 0 ? 'blank; boos' : `quality ${c.q}; ${fans[c.taste]} want ${TASTE[c.taste]}; about ${G.slideClaps(t, c)} claps`}</small></button>`).join('')}</div>`;
     wire = el => el.querySelectorAll('.slide').forEach(b => b.onclick = () => resolve(+b.dataset.i));
   } else if (mode === 'heckle') {
-    const odds = Math.round(100 * G.heckleOdds(t));
     const who = t.booers[Math.floor(Math.random() * t.booers.length)];
     body += `<p class="heckle">${who ? esc(who.name) + ': ' : ''}“${esc(HECKLES[Math.floor(Math.random() * HECKLES.length)])}”</p>
-      <div class="row"><button class="btn alt" id="ign">Let it go, +${G.ignoreCost(t)} boos</button><button class="btn" id="cb">Clap back, ${odds}% to land</button></div>
-      <p class="who" style="margin-top:8px">Landing is +9 claps. Missing is +5 boos${t.bully ? ', and the bully takes one of yours' : ''}.</p>`;
+      <div class="row"><button class="btn alt" id="ign">Let it go, +${G.ignoreCost(t)} boos</button><button class="btn" id="cb">Clap back, ${Math.round(100 * G.heckleOdds(t))}% to land</button></div>
+      <p class="who" style="margin-top:8px">Landing is +10 claps. Missing is +6 boos.</p>`;
     wire = el => { el.querySelector('#ign').onclick = () => resolve(false); el.querySelector('#cb').onclick = () => resolve(true); };
   } else if (mode === 'end') {
-    const names = a => a.map(p => esc(p.name)).join(', ');
-    body += `<h3>${t.gained > 0 ? `+${t.gained} points` : 'No points'}</h3>
-      <p>${t.won.length ? `Won over from the grass: ${names(t.won)}.` : 'Nobody on the grass was convinced.'}
-      ${t.lost.length ? ` Walked back to the grass: ${names(t.lost)}.` : ''}${t.lover ? ` ${esc(t.lover.name)} is now a true believer.` : ''}</p>
-      <div class="row"><button class="btn" id="ok">Back to the board</button></div>`;
+    body += `<h3>${t.score} all told</h3><div class="row"><button class="btn" id="ok">${mine ? 'Their turn at the Rock' : 'The verdict'}</button></div>`;
     wire = el => el.querySelector('#ok').onclick = () => { closeSheet(); resolve(); };
   }
   sheet(body, wire);
 }
 
-function roundSheet(card) {
+function verdict() {
   return new Promise(res => {
-    const rows = [['People who would clap', 'people'], ['Points', 'points'], ['Claps this round', 'claps'], ['Boos this round', 'boos'], ['Gained', 'gained'], ['Lost', 'lost']];
-    let head = `<h2>End of round ${card.round}</h2>`;
-    if (card.last) {
-      const r = G.result();
-      head = `<h2>${r.winner === P ? 'You win the office.' : r.winner === N ? 'Your nemesis takes the office.' : 'Dead level.'}</h2>
-        <p>${r.you} people to ${r.them}${r.margin === 0 ? `, ${r.pts[0]} points to ${r.pts[1]}` : ''}. The lead changed hands ${r.leadChanges} time${r.leadChanges === 1 ? '' : 's'}.</p>`;
-    }
-    sheet(`${head}<table class="rc"><thead><tr><th></th><th style="color:${YOU}">You</th><th style="color:${THEM}">Them</th></tr></thead><tbody>
-      ${rows.map(([l, k]) => `<tr><td>${l}</td><td>${card.you[k]}</td><td>${card.them[k]}</td></tr>`).join('')}</tbody></table>
-      <div class="row"><button class="btn" id="ok">${card.last ? 'Play again' : 'Next round'}</button></div>`,
+    const w = G.winner;
+    const head = w === P ? 'You take the office.' : w === N ? 'Your nemesis takes the office.' : 'Dead level.';
+    const why = G.how === 'rout' ? (w === P ? 'Their entire party is sulking in the car park at once.' : 'Your entire party is sulking in the car park at once.')
+      : `Final talks: you ${G.scores[P]}, them ${G.scores[N]}.`;
+    sheet(`<h2>${head}</h2><p>${why}</p>
+      <table class="rc"><thead><tr><th></th><th style="color:${YOU}">You</th><th style="color:${THEM}">Them</th></tr></thead><tbody>
+      <tr><td>Enemies broken</td><td>${G.breaks[P]}</td><td>${G.breaks[N]}</td></tr>
+      <tr><td>Crowd won over</td><td>${G.crowd[P].length}</td><td>${G.crowd[N].length}</td></tr>
+      <tr><td>Cards held at the end</td><td>${G.hand(P).length}</td><td>${G.hand(N).length}</td></tr>
+      <tr><td>Consultants retained</td><td>${G.consultants.filter(c => c.side === P).length}</td><td>${G.consultants.filter(c => c.side === N).length}</td></tr>
+      </tbody></table><div class="row"><button class="btn" id="ok">Play again</button></div>`,
       el => el.querySelector('#ok').onclick = () => { closeSheet(); res(); });
   });
 }
 
-// --- wiring the engine to the page -----------------------------------------
+// --- wiring ---------------------------------------------------------------------
 const agent = {
-  chooseMove(opts) { return new Promise(res => { UI.await = { opts, res }; render(); }); },
+  playTurn() { return new Promise(res => { UI.turn = res; nextUnit(); render(); }); },
   chooseSlide(t) { return new Promise(res => talkSheet(t, 'slide', res)); },
   chooseHeckle(t) { return new Promise(res => talkSheet(t, 'heckle', res)); },
 };
 const hooks = {
-  async roundStart(first) {
-    render();
-    const note = G.round === 1 ? (first === P ? 'You open.' : 'They open.')
-      : first === P ? 'Ahead, so you move first.' : 'Behind, so you get the last word.';
-    G.say(NONE, `Round ${G.round}. ${note} You start in the ${ROOMS[G.pos[P]].name}, they start in the ${ROOMS[G.pos[N]].name}.`);
-    render();
-    await banner(`Round ${G.round}`, 1200);
+  async turnStart() {
+    UI.sel = null; render();
+    await banner(G.side === P ? `Turn ${G.turn}` : 'Their turn', G.side === P ? 900 : 600);
   },
-  async nemesisMove(opt) {
-    UI.theirPath = pathTo(G.pos[N], opt.station, [G.pos[P]]);
+  async enemyPlan(u, p) {
+    UI.sel = u.id;
+    const path = G.pathTo(u, p.x, p.y);
+    UI.plan = [[u.x, u.y], ...path];
     render();
-    await sleep(650);
+    await sleep(420);
+    UI.plan = null;
   },
-  async afterMove(side) {
-    render();
-    if (side === N) { await sleep(500); UI.theirPath = null; render(); }
-  },
+  async enemyActed() { render(); await sleep(380); },
   async talkStart(t) { render(); if (t.side === N) { talkSheet(t, 'watch'); await sleep(900); } },
   async talkUpdate(t) { if (t.side === N) { talkSheet(t, 'watch'); await sleep(700); } },
-  async talkEnd(t) { render(); await new Promise(res => talkSheet(t, 'end', res)); render(); },
-  async roundEnd(card) { render(); await roundSheet(card); },
-  async matchEnd() { start(); },
+  async talkEnd(t) { await new Promise(res => talkSheet(t, 'end', res)); },
+  async matchEnd() { render(); await verdict(); start(); },
 };
 
 async function start() {
   G = new Game((Date.now() ^ (Math.random() * 1e9)) >>> 0);
-  UI.await = null; UI.filter = null; UI.hover = null; UI.theirPath = null; UI.seenLog = 0;
-  render();
+  Object.assign(UI, { turn: null, sel: null, hover: null, plan: null, seen: 0 });
   const cfg = await setupFlow();
   G.setup(cfg);
-  G.say(NONE, `Your nemesis is ${ROLE_NAME[G.roles[N]]}, with ${G.parties[N].map(r => ROLE_NAME[r]).join(', ') || 'nobody'}.`);
+  G.say(NONE, `Your nemesis is ${ROLE_NAME[G.jobs[N]]}, with ${G.parties[N].map(r => ROLE_NAME[r]).join(', ') || 'nobody'}.`);
   render();
   G.run(agent, hooks);
 }
