@@ -296,7 +296,7 @@ function render() {
   if (G.rigged[N]) flags.push('You rigged their projector');
   $('#status').innerHTML = `<h2>${UI.turn ? 'Your turn' : G.side === N ? 'Their turn' : 'The office'}</h2>
     <p class="who">${a} of yours on the floor, ${b} of theirs. You hold ${G.hand(P).length} card${G.hand(P).length === 1 ? '' : 's'} (${G.bank[P].length} banked); they hold ${G.hand(N).length}.</p>
-    ${G.fuse() ? '<p class="flags">All hands. Anyone broken now stays broken, and at the end every neutral goes with whoever has more people beside them.</p>' : G.turn >= A.HOLD_COST_FROM ? '<p class="who">Holding costs a point of morale now.</p>' : ''}
+    ${G.fuse() ? '<p class="flags">All hands. Anyone broken now stays broken, and at the end every neutral goes with whoever has more people beside them.</p>' : G.turn >= A.HOLD_COST_FROM ? '<p class="who">Holding costs a point of morale now, except for interns and contractors.</p>' : ''}
     <p>Your crowd and party want</p>
     <div class="wants">${TASTE.map((t, i) => `<div><b>${d[i]}</b><span>${TASTE_GLYPH[i]} ${t}</span></div>`).join('')}</div>
     ${flags.length ? `<p class="flags">${flags.map(esc).join('. ')}.</p>` : ''}
@@ -385,7 +385,7 @@ function endTurn() {
   const left = G.active(P).filter(v => !v.acted);
   if (left.length) {
     if (!$('#veil').hidden) return;
-    sheet(`<h2>End the turn for all?</h2><p>${left.length === 1 ? `${esc(left[0].name)} has` : `${left.length} of yours have`} not gone yet: ${left.map(v => esc(v.name)).join(', ')}. ${G.turn >= A.HOLD_COST_FROM ? 'Anyone left standing loses a point of morale for holding.' : 'They will simply hold.'}</p>
+    sheet(`<h2>End the turn for all?</h2><p>${left.length === 1 ? `${esc(left[0].name)} has` : `${left.length} of yours have`} not gone yet: ${left.map(v => esc(v.name)).join(', ')}. ${left.some(v => G.holdCost(v)) ? `${left.filter(v => G.holdCost(v)).map(v => esc(v.name)).join(', ')} will lose a point of morale for holding.` : 'They will simply hold.'}</p>
       <div class="row"><button class="btn alt" id="no">Keep playing</button><button class="btn" id="yes">End the turn</button></div>`,
       el => { el.querySelector('#no').onclick = closeSheet; el.querySelector('#yes').onclick = () => { closeSheet(); for (const v of left) G.act(v, { kind: 'wait' }); finishTurn(); }; });
     return;
@@ -520,7 +520,7 @@ const RULES = [
     <li><b>Use the job ability</b>, then wait three turns for it to come back. Most need the target next to you; the ones that reach further are shouted, or sent over the network.</li>
     <li><b>Pickpocket</b> an enemy who is carrying cards.</li>
     <li><b>Bank</b> your cards in your own office, or <b>rig</b> or <b>check</b> the projector at the Rock.</li>
-    <li><b>Hold.</b> From turn 4, holding costs a point of morale.</li></ul>
+    <li><b>Hold.</b> From turn 4, holding costs a point of morale, whether you chose to or had nothing in reach. Interns and contractors are used to standing about and pay nothing.</li></ul>
     <p>Press <b>End turn for all</b> when you are done. Anyone who has not gone holds.</p>`],
   ['Morale and breaking', `<p>Morale is a unit's health. At zero they are demoralised: they drop every card they carry onto the floor and sulk in the car park for two turns, coming back at 2 morale. Contractors simply quit.</p>
     <p>In the last two turns, anyone broken stays broken. Break the whole enemy party at once and you win on the spot.</p>`],

@@ -23,7 +23,7 @@ const JOB_PRO = [
   'Rumour hits everyone within two tiles at once; the best crowd-control on the floor.',
   'Charm plus Hustle: fast, and Pitch wins the undecided from three tiles away.',
   'Grit and Guile: hard to break, good at picking pockets. Injunction pins an enemy for a turn.',
-  'Fastest legs in the office, and a Coffee run takes a card from a desk and carries on: grab and go.',
+  'Fastest legs in the office, and a Coffee run takes a card from a desk and carries on: grab and go. Used to standing about: never loses morale for holding.',
 ];
 const JOB_CON = [
   'Slow. No Hustle at all.',
@@ -321,6 +321,8 @@ class Game {
   // Your own supplies are locked to you; only the other side's closets can be raided.
   raidable(side, x) { return side === P ? x > Math.floor(A.W / 2) : x < Math.floor(A.W / 2); }
   onHome(u) { return this.tile(u.x, u.y) === (u.side === P ? 'a' : 'b'); }
+  // Holding still costs morale from turn 4, unless you are an intern or a contractor: they are used to it.
+  holdCost(u) { return this.turn >= A.HOLD_COST_FROM && u.morale > 1 && u.job !== RO.INTERN && u.kind !== 'contractor' ? 1 : 0; }
   pitchAmt(u, base = 1) { return base + (u.stats[0] >= 3 ? 1 : 0) + (this.has(u.side, 'hunt') ? 1 : 0); }
   joinAt(n) { return n.kind === 'consultant' ? CONSULT_AT : n.kind === 'contractor' ? 1 : A.JOIN_AT; }
   wouldJoin(n, side, amt) { const r = warmRule(n.amt, n.for, amt, side); return r[1] === side && r[0] >= this.joinAt(n); }
@@ -364,7 +366,7 @@ class Game {
       if (!this.rigged[other] && this.turn < A.TURNS) out.push({ kind: 'rig', label: 'Rig their projector', sub: 'their best slide comes up blank at the final talk, unless they check it' });
       if (this.rigged[u.side]) out.push({ kind: 'check', label: 'Check your projector', sub: 'it has been rigged; this puts it right' });
     }
-    out.push({ kind: 'wait', label: 'Hold', sub: this.turn >= A.HOLD_COST_FROM && u.morale > 1 ? 'do nothing, and lose 1 morale for it' : 'do nothing more this turn' });
+    out.push({ kind: 'wait', label: 'Hold', sub: this.holdCost(u) ? 'do nothing, and lose 1 morale for it' : this.turn >= A.HOLD_COST_FROM ? 'do nothing; standing about costs this one nothing' : 'do nothing more this turn' });
     return out;
   }
 
@@ -455,7 +457,7 @@ class Game {
       case 'pitch': this.pitch(u, t, this.pitchAmt(u)); break;
       case 'ability': this.useAbility(u, a, t); break;
       case 'bank': this.bank[u.side].push(...u.cards); this.say(u.side, `${u.name} banked ${u.cards.length} card${u.cards.length === 1 ? '' : 's'} in the office.`); u.cards = []; break;
-      case 'wait': if (this.turn >= A.HOLD_COST_FROM && u.morale > 1) u.morale--; break;
+      case 'wait': u.morale -= this.holdCost(u); break;
       case 'rig': this.rigged[other] = true; this.say(u.side, u.side === P ? 'You rigged their projector.' : 'Somebody has been at your projector.'); break;
       case 'check': this.rigged[u.side] = false; this.say(u.side, `${u.name} checked the projector and put it right.`); break;
       default: break;
@@ -666,7 +668,7 @@ class Game {
       case 'bank': return u.cards.length * (this.danger(u, u.x, u.y) > 0 ? 1.4 : 0.8) + (u.cards.length >= A.HEAVY_LOAD ? 1 : 0);
       case 'rig': return this.turn >= 2 ? 3.5 : 1;
       case 'check': return 5;
-      case 'wait': return this.turn >= A.HOLD_COST_FROM ? -1.2 : 0;
+      case 'wait': return this.holdCost(u) ? -1.2 : 0;
       default: return 0;
     }
   }
