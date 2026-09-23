@@ -164,8 +164,17 @@ table.rc { border-collapse: collapse; width: 100%; font-size: 15px; margin-top: 
   .cards { max-height: none; }
   .mv { padding: 9px 12px; }
 }
-.veil { display: flex; align-items: flex-start; justify-content: center; }
-.sheet { margin: auto; }
+.veil { display: flex; align-items: flex-start; justify-content: center; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+button, .tile, .unit { touch-action: manipulation; -webkit-tap-highlight-color: rgba(255, 159, 210, .35); }
+.sheet .stick { position: sticky; bottom: 0; background: var(--card); padding: 8px 0 4px; margin-top: 10px; box-shadow: 0 -10px 12px -10px rgba(0,0,0,.25); }
+.sheet .stick .who { margin: 0 0 6px; }
+/* Touch screens have no hover: never let a first tap be spent on one. */
+@media (hover: none) {
+  .mv:hover:not(:disabled), .job:hover, .btn:hover, .rrow:hover { box-shadow: none; }
+  .mv:hover:not(:disabled) { background: #fff; }
+  .slide:not(.picked):hover { box-shadow: none; }
+}
+.sheet { margin: 4vh auto auto; }
 .keybox > summary { cursor: pointer; font-family: var(--hand); font-size: 22px; padding: 2px 22px 6px; color: var(--ink-soft); list-style: none; }
 .keybox > summary::-webkit-details-marker { display: none; }
 .keybox > summary::before { content: "▸ "; } .keybox[open] > summary::before { content: "▾ "; }
@@ -1368,7 +1377,7 @@ function renderUnit() {
   const card = $('#unitcard');
   const u = UI.sel ? G.byId(UI.sel) : null;
   if (!u || u.sulk || u.gone) {
-    card.innerHTML = `<h2>${UI.turn ? 'Pick someone' : 'Watching'}</h2><p class="waiting">${UI.turn ? 'Click one of your people on the floor.' : 'Their party is moving…'}</p>
+    card.innerHTML = `<h2>${UI.turn ? 'Pick someone' : 'Watching'}</h2><p class="waiting">${UI.turn ? `${PHONE ? 'Tap' : 'Click'} one of your people on the floor.` : 'Their party is moving…'}</p>
       ${UI.turn ? `<div class="ctl">${endTurnButton()}</div>` : ''}`;
     const e = $('#endturn'); if (e) e.onclick = endTurn;
     return;
@@ -1383,7 +1392,7 @@ function renderUnit() {
     <div class="chips">${u.cards.length ? u.cards.map(c => `<span class="chip">${TASTE_GLYPH[c.taste]} ${esc(c.name)} <small>q${c.q}</small></span>`).join('') : '<span class="who">No cards.</span>'}</div></div>`;
   let acts = [];
   if (UI.turn && mine) {
-    if (u.acted) h += `<p class="waiting">${u.moved ? 'Done for this turn.' : 'Coffee in hand: click a pink tile to keep walking.'}</p>`;
+    if (u.acted) h += `<p class="waiting">${u.moved ? 'Done for this turn.' : `Coffee in hand: ${PHONE ? 'tap' : 'click'} a pink tile to keep walking.`}</p>`;
     else {
       acts = G.actions(u);
       if (!u.moved) h += `<p class="who">${PHONE ? 'Tap' : 'Click'} a pink tile to move, or act from here.</p>`;
@@ -1451,10 +1460,11 @@ function endTurnButton() {
 function sheet(html, wire) {
   $('#sheet').innerHTML = html;
   $('#veil').hidden = false;
+  document.body.style.overflow = 'hidden';
   if (wire) wire($('#sheet'));
   const f = $('#sheet').querySelector('button:not(:disabled)'); if (f) f.focus({ preventScroll: true });
 }
-function closeSheet() { $('#veil').hidden = true; $('#sheet').innerHTML = ''; }
+function closeSheet() { $('#veil').hidden = true; $('#sheet').innerHTML = ''; document.body.style.overflow = ''; }
 
 function setupFlow() {
   return new Promise(done => {
@@ -1501,26 +1511,46 @@ function talkSheet(T, mode, resolve) {
   const S = T.sides[P], E = T.sides[N];
   const fans = TASTE.map((_, i) => G.fans(T, P, i));
   const meter = (X, cls) => { const tot = Math.max(X.claps + X.boos, 1); return `<div class="meter ${cls}"><div class="c" style="width:${100 * X.claps / tot}%"></div><div class="b" style="width:${100 * X.boos / tot}%"></div></div><div class="tally">${X.claps} claps, ${X.boos} boos</div>`; };
-  let body = `<h2>${mode === 'pick' ? 'Pick your three slides' : 'The final talks'}</h2>
+  let body = `<h2>${mode === 'pick' ? (S.hand.length >= 3 ? 'Pick your three slides' : 'Pick your slides') : 'The final talks'}</h2>
     <p>In the room for you: ${S.audience.length} of yours, ${S.booers.length} of theirs to boo. For them: ${E.audience.length} of theirs, ${E.booers.length} of yours.${S.blanked ? ` Your projector was rigged: ${esc(S.blanked.name)} came up blank.` : ''}</p>
     <div class="wants">${TASTE.map((n, i) => `<div><b>${fans[i]}</b><span>${TASTE_GLYPH[i]} ${n}</span></div>`).join('')}</div>`;
   let wire = null;
   if (mode === 'pick') {
-    const picked = talkSheet.picked || (talkSheet.picked = []);
-    const by = talkSheet.by || (talkSheet.by = {});
+    // Built once; taps update it in place, so the card you touched is still there when the tap lands.
+    const picked = [], by = {};
     const pres = G.presenters(P);
     const want = Math.min(3, S.hand.length);
     const claps = (c, u) => G.slideClaps(T, P, c, u);
-    body += `<p class="who">Click up to three cards, in the order they go up. Their three stay hidden until the slides alternate, and a slide that repeats the taste the room just saw gets nothing. ${S.hand.length ? '' : 'You have no cards at all.'}</p>
-      <div class="row">${S.hand.map((c, i) => { const k = picked.indexOf(i); return `<button class="slide ${k >= 0 ? 'picked' : ''}" data-i="${i}">
-        <b>${k >= 0 ? `<span class="num">${k + 1}</span> ` : ''}${TASTE_GLYPH[c.taste]} ${esc(c.name)}</b><small>quality ${c.q}; ${fans[c.taste]} in your room want ${TASTE[c.taste]}; about ${claps(c, G.leader(P).id)} claps if you present it</small></button>`; }).join('')}</div>
-      ${picked.length ? `<h3>Who presents each</h3><div class="pres">${picked.map((i, k) => { const c = S.hand[i]; return `<label><span class="num">${k + 1}</span> ${TASTE_GLYPH[c.taste]} ${esc(c.name)}: <select data-k="${i}">${pres.map(u => `<option value="${u.id}" ${(by[i] ?? G.leader(P).id) === u.id ? 'selected' : ''}>${esc(u.name)}${u.leader ? '' : ` (${ROLE_NAME[u.job]}, Charm ${u.stats[0]})`}: about ${claps(c, u.id)} claps${c.taste === 2 && G.gadgetHand(u) ? ', knows gadgets' : ''}</option>`).join('')}</select></label>`; }).join('')}</div>` : ''}
-      <p class="who">${picked.length} of ${want} picked${picked.length && picked.length < want ? '; you can present fewer, but every empty slot is claps you are not getting' : ''}.</p>
-      <div class="row"><button class="btn" id="go" ${picked.length || !S.hand.length ? '' : 'disabled'}>Present ${picked.length === 1 ? 'this one' : 'these'}</button></div>`;
+    const presHtml = () => picked.length ? `<h3>Who presents each</h3>${picked.map((i, k) => { const c = S.hand[i]; return `<label><span class="num">${k + 1}</span> ${TASTE_GLYPH[c.taste]} ${esc(c.name)}: <select data-k="${i}">${pres.map(u => `<option value="${u.id}" ${(by[i] ?? G.leader(P).id) === u.id ? 'selected' : ''}>${esc(u.name)}${u.leader ? '' : ` (${ROLE_NAME[u.job]}, Charm ${u.stats[0]})`}: about ${claps(c, u.id)} claps${c.taste === 2 && G.gadgetHand(u) ? ', knows gadgets' : ''}</option>`).join('')}</select></label>`; }).join('')}` : '';
+    const countText = () => `${picked.length} of ${want} picked${picked.length && picked.length < want ? '; you can present fewer, but every empty slot is claps you are not getting' : ''}.`;
+    body += `<p class="who">${PHONE ? 'Tap' : 'Click'} up to three cards, in the order they go up; ${PHONE ? 'tap' : 'click'} again to take one back. Their three stay hidden until the slides alternate, and a slide that repeats the taste the room just saw gets nothing. ${S.hand.length ? '' : 'You have no cards at all.'}</p>
+      <div class="row">${S.hand.map((c, i) => `<button class="slide" data-i="${i}" aria-pressed="false">
+        <b><span class="num" hidden></span> ${TASTE_GLYPH[c.taste]} ${esc(c.name)}</b><small>quality ${c.q}; ${fans[c.taste]} in your room want ${TASTE[c.taste]}; about ${claps(c, G.leader(P).id)} claps if you present it</small></button>`).join('')}</div>
+      <div class="pres" id="presbox"></div>
+      <div class="stick"><p class="who" id="pickcount">${countText()}</p>
+      <button class="btn" id="go" ${S.hand.length ? 'disabled' : ''}>${S.hand.length ? 'Present these' : 'Go up empty-handed'}</button></div>`;
     wire = el => {
-      el.querySelectorAll('.slide').forEach(b => b.onclick = () => { const i = +b.dataset.i; const k = picked.indexOf(i); if (k >= 0) picked.splice(k, 1); else if (picked.length < 3) picked.push(i); talkSheet(T, 'pick', resolve); });
-      el.querySelectorAll('select').forEach(sel => sel.onchange = () => { by[+sel.dataset.k] = +sel.value; talkSheet(T, 'pick', resolve); });
-      el.querySelector('#go').onclick = () => { const out = picked.map(i => ({ i, by: by[i] ?? G.leader(P).id })); talkSheet.picked = null; talkSheet.by = null; resolve(out); };
+      const refresh = () => {
+        el.querySelectorAll('.slide').forEach(b => {
+          const k = picked.indexOf(+b.dataset.i);
+          b.classList.toggle('picked', k >= 0);
+          b.setAttribute('aria-pressed', k >= 0 ? 'true' : 'false');
+          const n = b.querySelector('.num'); n.hidden = k < 0; n.textContent = k >= 0 ? k + 1 : '';
+        });
+        const box = el.querySelector('#presbox'); box.innerHTML = presHtml();
+        box.querySelectorAll('select').forEach(sel => sel.onchange = () => { by[+sel.dataset.k] = +sel.value; });
+        el.querySelector('#pickcount').textContent = countText();
+        const go = el.querySelector('#go');
+        go.disabled = S.hand.length > 0 && picked.length === 0;
+        go.textContent = !S.hand.length ? 'Go up empty-handed' : picked.length === 1 ? 'Present this one' : 'Present these';
+      };
+      el.querySelectorAll('.slide').forEach(b => b.onclick = e => {
+        e.preventDefault();
+        const i = +b.dataset.i; const k = picked.indexOf(i);
+        if (k >= 0) picked.splice(k, 1); else if (picked.length < 3) picked.push(i);
+        refresh();
+      });
+      el.querySelector('#go').onclick = () => { closeSheet(); resolve(picked.map(i => ({ i, by: by[i] ?? G.leader(P).id }))); };
     };
   } else {
     body += `<p><b style="color:${YOU}">You</b></p>${meter(S, '')}<p style="margin-top:8px"><b style="color:${THEM}">Them</b></p>${meter(E, 'them')}
