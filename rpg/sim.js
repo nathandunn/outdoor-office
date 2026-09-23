@@ -12,7 +12,7 @@ let w = 0, t = 0, l = 0, routs = 0, turns = 0, breaks = 0, crowd = 0, err = 0, h
     g.setup({ role, stats, party: Array.from({ length: party }, () => PLAYABLE[g.ri(8)]) });
     const agent = {
       async playTurn(gg) { gg.playSide(P, policy); },
-      chooseSlide(tk, gg) { return policy === 'random' ? gg.ri(tk.hand.length) : gg.bestSlide(tk); },
+      pickSlides(T, gg) { return policy === 'random' ? T.sides[P].hand.map((c, i) => i).sort(() => gg.r() - 0.5).slice(0, 3) : gg.aiPick(T, P); },
       chooseHeckle(tk, gg) { return policy === 'random' ? gg.r() < 0.5 : true; },
     };
     try {

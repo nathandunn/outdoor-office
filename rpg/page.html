@@ -53,10 +53,11 @@
       <ol id="log" aria-live="polite"></ol>
       <details>
         <summary>How it plays</summary>
-        <p>Your party and theirs share one office for twelve turns. On your turn each of your people may move and then do one thing: argue with an enemy next to them, take a card from a desk, raid a supply closet, pitch a neutral, use their job's ability, hire help in the Lobby, or rig the projector at the Rock.</p>
-        <p>Arguing costs morale. At zero a unit is demoralised: they drop their cards on the floor and sulk in the car park for three turns. Put their whole party in the car park at once and you win on the spot.</p>
-        <p>Otherwise, after twelve turns both leaders give a final talk using every card their party still holds. Each slide lands in proportion to how many in your crowd and your party want its taste, times its quality. Their people in the room boo. Best score takes the office.</p>
-        <p>Money comes in every turn, and for every break and every recruit. Contractors are cheap, fight for you and leave after four turns. Consultants cost more, give your side a standing rule, and can be poached by the other side for two more than you paid.</p>
+        <p>Eight turns on one small floor. The desks are in the middle, between the parties; the supply closets are behind each party's office and locked to their own side, so raiding one means going through the people it belongs to. Each turn every one of your people moves and does one thing: argue with an enemy next to them, take a card from a desk, raid a closet, pitch a neutral, use their job's ability, bank their cards in your office, hire in the Lobby, or rig the projector at the Rock.</p>
+        <p>Carrying three or more cards slows a unit by a tile. Banked cards are safe; carried ones can be picked from a pocket or dropped when their carrier is broken. A unit at zero morale drops everything and sulks two turns, coming back at 2 morale. From turn 4, holding still costs a point of morale.</p>
+        <p>The last two turns are all hands: anyone broken stays broken, and when time is called every undecided neutral goes with whichever party has more people beside them. Break the whole enemy party at once and you win on the spot.</p>
+        <p>Then the talk. Each leader picks three slides without seeing the other's, and they are shown in turns. A slide of the same taste as the one the room just saw gets nothing. Quality times how many in the room want that taste, minus boos from their people, is your score.</p>
+        <p>Money is $3 a turn and does not carry over, plus $2 a break and $1 a recruit. Contractors are $3 for two turns. Consultants come down $1 each turn nobody buys them, and can be poached for $2 more than the buyer paid.</p>
       </details>
     </div>
   </aside>
@@ -71,15 +72,13 @@
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const YOU = '#b8322a', THEM = '#2a5db0', INK = '#1f2440', PAD = '#fbf1a9', HI = '#ff9fd2';
-const CS = 32, OX = 4, OY = 6;
+const CS = 46, OX = 17, OY = 11;
 const RELAX = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const sleep = ms => new Promise(r => setTimeout(r, RELAX ? Math.min(ms, 120) : ms));
 const SHORT = ['CEO', 'Eng', 'IT', 'HR', 'Mkt', 'Sal', 'Law', 'Int', 'Stf'];
 const HECKLES = ['Could have been an email!', 'Is this going to be on the test?', 'Next slide, please!', 'Who signed off on this?',
   'We tried that in 2019.', 'Does it scale, though?', 'Louder for the people at the water cooler!'];
-const LABELS = [[3, 1, 'Your office'], [27, 1, 'Their office'], [9, 1, 'Data & Story'], [21, 1, 'Story & Data'],
-  [15, 1, 'The Rock'], [9, 17, 'Gadget & Snacks'], [21, 17, 'Snacks & Gadget'], [3, 12, 'Break room'], [27, 12, 'Break room'],
-  [15, 8, 'Lobby'], [15, 12, 'Water cooler']];
+const LABELS = [[3, 4, 'Your office'], [17, 4, 'Their office'], [12, 1, 'The Rock'], [12, 11, 'Lobby'], [3, 9, 'Your supplies'], [17, 9, 'Their supplies']];
 
 let G = null;
 const UI = { turn: null, sel: null, hover: null, plan: null, seen: 0 };
@@ -105,13 +104,13 @@ function drawBoard() {
     <pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(40)"><line x1="0" y1="0" x2="0" y2="7" stroke="${INK}" stroke-width="3"/></pattern>
     <pattern id="waves" width="16" height="8" patternUnits="userSpaceOnUse"><path d="M0 4 Q4 0 8 4 T16 4" fill="none" stroke="${THEM}" stroke-width="1.6"/></pattern>
   </defs>`;
-  for (let y = 8; y < 620; y += 24) s += `<line x1="0" x2="1000" y1="${y}" y2="${y}" stroke="#9cc3d9" stroke-width="1" opacity=".6"/>`;
+  for (let y = 11; y < 620; y += 23) s += `<line x1="0" x2="1000" y1="${y}" y2="${y}" stroke="#9cc3d9" stroke-width="1" opacity=".6"/>`;
   // floor features
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const t = G.map[y][x], X = OX + x * CS, Y = OY + y * CS;
     if (t === 'a' || t === 'b') s += `<rect x="${X}" y="${Y}" width="${CS}" height="${CS}" fill="${t === 'a' ? YOU : THEM}" opacity=".08"/>`;
     if (t === 'R') s += `<rect x="${X + 1}" y="${Y + 1}" width="${CS - 2}" height="${CS - 2}" fill="#d9cfa0" stroke="${INK}" stroke-width="1"/>`;
-    if (t === 'L') s += `<circle cx="${X + 16}" cy="${Y + 16}" r="12" fill="#fff" stroke="${INK}" stroke-width="1.6"/><text x="${X + 16}" y="${Y + 22}" text-anchor="middle" class="hand" font-size="20" font-weight="700" fill="${INK}">$</text>`;
+    if (t === 'L') s += `<circle cx="${X + CS / 2}" cy="${Y + CS / 2}" r="15" fill="#fff" stroke="${INK}" stroke-width="1.6"/><text x="${X + CS / 2}" y="${Y + CS / 2 + 8}" text-anchor="middle" class="hand" font-size="24" font-weight="700" fill="${INK}">$</text>`;
     if (reach[key(x, y)] !== undefined) s += `<rect x="${X + 2}" y="${Y + 2}" width="${CS - 4}" height="${CS - 4}" fill="${HI}" opacity=".45" class="tile" data-x="${x}" data-y="${y}"/>`;
   }
   // walls, as one inked path
@@ -120,23 +119,22 @@ function drawBoard() {
   s += `<path d="${wp}" fill="url(#hatch)" stroke="${INK}" stroke-width="1.2" filter="url(#pen)"/>`;
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const t = G.map[y][x], X = OX + x * CS, Y = OY + y * CS;
-    if (t === '~') s += `<rect x="${X}" y="${Y}" width="${CS}" height="${CS}" fill="#cfe3f3"/><rect x="${X}" y="${Y}" width="${CS}" height="${CS}" fill="url(#waves)"/>`;
     if (DESKS[t] !== undefined) {
       const st = G.stock[key(x, y)];
-      s += `<g><title>${TASTE[DESKS[t]]} desk, ${st} card${st === 1 ? '' : 's'} left</title><rect x="${X + 2}" y="${Y + 3}" width="${CS - 4}" height="${CS - 6}" fill="#fff" stroke="${INK}" stroke-width="2" filter="url(#pen)"/>
-        <text x="${X + 16}" y="${Y + 20}" text-anchor="middle" font-size="15" fill="${INK}">${TASTE_GLYPH[DESKS[t]]}</text>`;
-      for (let i = 0; i < st; i++) s += `<circle cx="${X + 9 + i * 7}" cy="${Y + 26}" r="2.2" fill="${INK}"/>`;
+      s += `<g><title>${TASTE[DESKS[t]]} desk, ${st} card${st === 1 ? '' : 's'} left${st ? '' : '; cleared out'}</title><rect x="${X + 3}" y="${Y + 4}" width="${CS - 6}" height="${CS - 8}" fill="${st ? '#fff' : 'none'}" stroke="${INK}" stroke-width="2" ${st ? '' : 'stroke-dasharray="3 3"'} filter="url(#pen)"/>
+        <text x="${X + CS / 2}" y="${Y + CS / 2 + 4}" text-anchor="middle" font-size="19" fill="${INK}">${TASTE_GLYPH[DESKS[t]]}</text>`;
+      for (let i = 0; i < st; i++) s += `<circle cx="${X + 12 + i * 8}" cy="${Y + CS - 9}" r="2.6" fill="${INK}"/>`;
       s += `</g>`;
     }
-    if (t === 'C' || t === 'c') s += `<g><title>${t === 'C' ? 'Supply closet: two good slides inside' : 'An emptied supply closet'}</title><rect x="${X + 2}" y="${Y + 2}" width="${CS - 4}" height="${CS - 4}" fill="${t === 'C' ? '#fff3c4' : 'none'}" stroke="${INK}" stroke-width="2" ${t === 'c' ? 'stroke-dasharray="3 3"' : ''}/>
-      ${t === 'C' ? `<text x="${X + 16}" y="${Y + 22}" text-anchor="middle" font-size="16" fill="${INK}">★</text>` : ''}</g>`;
+    if (t === 'C' || t === 'c') s += `<g><title>${t === 'C' ? (G.raidable(P, x) ? 'Their supply closet: two good slides inside, yours to raid' : 'Your supply closet: locked to you, theirs to raid') : 'An emptied supply closet'}</title><rect x="${X + 3}" y="${Y + 3}" width="${CS - 6}" height="${CS - 6}" fill="${t === 'C' ? '#fff3c4' : 'none'}" stroke="${INK}" stroke-width="2" ${t === 'c' ? 'stroke-dasharray="3 3"' : ''}/>
+      ${t === 'C' ? `<text x="${X + CS / 2}" y="${Y + CS / 2 + 7}" text-anchor="middle" font-size="22" fill="${INK}">★</text>` : ''}</g>`;
   }
   for (const [x, y, l] of LABELS) s += `<text class="hand" x="${cx(x)}" y="${OY + y * CS + 11}" text-anchor="middle" font-size="17" fill="${INK}" opacity=".55">${l}</text>`;
   // loot on the floor
   for (const k in G.loot) {
     const [x, y] = k.split(',').map(Number), X = OX + x * CS, Y = OY + y * CS;
     s += `<g><title>${G.loot[k].length} card${G.loot[k].length === 1 ? '' : 's'} on the floor: ${esc(G.loot[k].map(c => c.name).join(', '))}</title>`;
-    for (let i = 0; i < Math.min(3, G.loot[k].length); i++) s += `<rect x="${X + 7 + i * 3}" y="${Y + 6 + i * 3}" width="14" height="18" fill="#fff" stroke="${INK}" stroke-width="1.5" transform="rotate(${-8 + i * 8} ${X + 16} ${Y + 16})"/>`;
+    for (let i = 0; i < Math.min(3, G.loot[k].length); i++) s += `<rect x="${X + 12 + i * 3}" y="${Y + 10 + i * 3}" width="18" height="24" fill="#fff" stroke="${INK}" stroke-width="1.5" transform="rotate(${-8 + i * 8} ${X + CS / 2} ${Y + CS / 2})"/>`;
     s += `</g>`;
   }
   // the path of the move being planned
@@ -147,9 +145,9 @@ function drawBoard() {
   for (const n of G.neutrals) {
     const X = cx(n.x), Y = cy(n.y);
     s += `<g><title>${esc(n.name)}, ${ROLE_NAME[n.role]}. Wants ${TASTE[n.taste]}.${n.amt ? ` Warming to ${n.for === P ? 'you' : 'them'} (${n.amt} of ${A.JOIN_AT}).` : ''}</title>
-      <circle cx="${X}" cy="${Y}" r="10" fill="#fffdf6" stroke="${INK}" stroke-width="1.4"/>`;
-    if (n.amt > 0) s += `<circle cx="${X}" cy="${Y}" r="13" fill="none" stroke="${n.for === P ? YOU : THEM}" stroke-width="3" stroke-dasharray="${(n.amt / A.JOIN_AT) * 81.7} 99"/>`;
-    s += `<text x="${X}" y="${Y + 4}" text-anchor="middle" font-size="11" fill="${INK}">${TASTE_GLYPH[n.taste]}</text></g>`;
+      <circle cx="${X}" cy="${Y}" r="13" fill="#fffdf6" stroke="${INK}" stroke-width="1.6"/>`;
+    if (n.amt > 0) s += `<circle cx="${X}" cy="${Y}" r="17" fill="none" stroke="${n.for === P ? YOU : THEM}" stroke-width="3.5" stroke-dasharray="${(n.amt / A.JOIN_AT) * 106.8} 120"/>`;
+    s += `<text x="${X}" y="${Y + 5}" text-anchor="middle" font-size="14" fill="${INK}">${TASTE_GLYPH[n.taste]}</text></g>`;
   }
   // units
   for (const u of G.units) {
@@ -158,15 +156,15 @@ function drawBoard() {
     const spent = u.side === G.side && u.acted;
     const isSel = sel === u;
     s += `<g class="unit" data-id="${u.id}" style="cursor:pointer" opacity="${spent ? 0.5 : 1}"><title>${esc(unitTitle(u))}</title>`;
-    if (isSel) s += `<circle cx="${X}" cy="${Y}" r="17" fill="${HI}"/>`;
-    if (u.kind === 'contractor') s += `<rect x="${X - 12}" y="${Y - 12}" width="24" height="24" rx="4" fill="${c}" stroke="${INK}" stroke-width="2"/>`;
-    else s += `<circle cx="${X}" cy="${Y}" r="13" fill="${c}" stroke="${INK}" stroke-width="${u.leader ? 3.5 : 2}"/>`;
-    if (u.leader) s += `<circle cx="${X}" cy="${Y}" r="9.5" fill="none" stroke="#fff" stroke-width="1.2"/>`;
-    s += `<text x="${X}" y="${Y + 4}" text-anchor="middle" font-size="${u.kind === 'contractor' ? 9 : 10}" font-weight="700" fill="#fff">${u.kind === 'contractor' ? u.name.slice(0, 3) : SHORT[u.job]}</text>`;
+    if (isSel) s += `<circle cx="${X}" cy="${Y}" r="22" fill="${HI}"/>`;
+    if (u.kind === 'contractor') s += `<rect x="${X - 15}" y="${Y - 15}" width="30" height="30" rx="5" fill="${c}" stroke="${INK}" stroke-width="2"/>`;
+    else s += `<circle cx="${X}" cy="${Y}" r="16" fill="${c}" stroke="${INK}" stroke-width="${u.leader ? 4 : 2}"/>`;
+    if (u.leader) s += `<circle cx="${X}" cy="${Y}" r="12" fill="none" stroke="#fff" stroke-width="1.3"/>`;
+    s += `<text x="${X}" y="${Y + 4.5}" text-anchor="middle" font-size="${u.kind === 'contractor' ? 10 : 12}" font-weight="700" fill="#fff">${u.kind === 'contractor' ? u.name.slice(0, 3) : SHORT[u.job]}</text>`;
     const f = u.morale / u.max;
-    s += `<rect x="${X - 13}" y="${Y + 14}" width="26" height="4" fill="#fff" stroke="${INK}" stroke-width=".8"/><rect x="${X - 13}" y="${Y + 14}" width="${26 * f}" height="4" fill="${f < 0.34 ? '#e06a2a' : c}"/>`;
-    if (u.cards.length) s += `<rect x="${X + 8}" y="${Y - 16}" width="10" height="12" fill="#fff" stroke="${INK}" stroke-width="1"/><text x="${X + 13}" y="${Y - 7}" text-anchor="middle" font-size="9" fill="${INK}">${u.cards.length}</text>`;
-    if (u.rooted) s += `<text x="${X - 15}" y="${Y - 8}" font-size="12" fill="${INK}">⛓</text>`;
+    s += `<rect x="${X - 16}" y="${Y + 18}" width="32" height="5" fill="#fff" stroke="${INK}" stroke-width=".8"/><rect x="${X - 16}" y="${Y + 18}" width="${32 * f}" height="5" fill="${f < 0.34 ? '#e06a2a' : c}"/>`;
+    if (u.cards.length) s += `<rect x="${X + 10}" y="${Y - 21}" width="12" height="15" fill="#fff" stroke="${INK}" stroke-width="1"/><text x="${X + 16}" y="${Y - 10}" text-anchor="middle" font-size="10" fill="${INK}">${u.cards.length}</text>`;
+    if (u.rooted) s += `<text x="${X - 22}" y="${Y - 10}" font-size="14" fill="${INK}">⛓</text>`;
     s += `</g>`;
   }
   const svg = $('#board');
@@ -194,7 +192,8 @@ function legend() {
     <span><svg width="26" height="26" viewBox="-13 -13 26 26"><rect x="-10" y="-10" width="20" height="20" rx="3" fill="${YOU}" stroke="${INK}" stroke-width="2"/></svg>contractor</span>
     <span><svg width="26" height="26" viewBox="-13 -13 26 26"><circle r="9" fill="#fffdf6" stroke="${INK}"/><circle r="11.5" fill="none" stroke="${YOU}" stroke-width="3" stroke-dasharray="36 99"/></svg>neutral, warming to you</span>
     <span><svg width="26" height="26" viewBox="0 0 26 26"><rect x="5" y="4" width="14" height="18" fill="#fff" stroke="${INK}" stroke-width="1.5"/></svg>loot on the floor</span>
-    <span>★ supply closet &nbsp; $ hire help &nbsp; ${TASTE.map((t, i) => `${TASTE_GLYPH[i]} ${t}`).join(', ')}</span>`;
+    <span>★ supply closet &nbsp; $ hire help &nbsp; ${TASTE.map((t, i) => `${TASTE_GLYPH[i]} ${t}`).join(', ')}</span>
+    <span>Tinted tiles are your office: bank cards there.</span>`;
 }
 
 // --- the side column ---------------------------------------------------------
@@ -210,10 +209,11 @@ function render() {
   if (G.rigged[P]) flags.push('Your projector is rigged. Get someone to the Rock and check it');
   if (G.rigged[N]) flags.push('You rigged their projector');
   $('#status').innerHTML = `<h2>${UI.turn ? 'Your turn' : G.side === N ? 'Their turn' : 'The office'}</h2>
-    <p class="who">${a} of yours on the floor, ${b} of theirs. You hold ${G.hand(P).length} cards between you; they hold ${G.hand(N).length}.</p>
+    <p class="who">${a} of yours on the floor, ${b} of theirs. You hold ${G.hand(P).length} card${G.hand(P).length === 1 ? '' : 's'} (${G.bank[P].length} banked); they hold ${G.hand(N).length}.</p>
+    ${G.fuse() ? '<p class="flags">All hands. Anyone broken now stays broken, and at the end every neutral goes with whoever has more people beside them.</p>' : G.turn >= A.HOLD_COST_FROM ? '<p class="who">Holding costs a point of morale now.</p>' : ''}
     <p>Your crowd and party want</p>
     <div class="wants">${TASTE.map((t, i) => `<div><b>${d[i]}</b><span>${TASTE_GLYPH[i]} ${t}</span></div>`).join('')}</div>
-    <div class="cons"><b>Consultants</b><ul>${G.consultants.map(c => `<li>${esc(c.name)}: ${c.side === P ? '<b>yours</b>' : c.side === N ? `<span style="color:${THEM}">theirs, paid $${c.loyalty}</span>` : `free, $${c.price}`}. <span class="who">${esc(c.what)}.</span></li>`).join('')}</ul></div>
+    <div class="cons"><b>Consultants</b><ul>${G.consultants.map(c => `<li>${esc(c.name)}: ${c.side === P ? '<b>yours</b>' : c.side === N ? `<span style="color:${THEM}">theirs, paid $${c.loyalty}; poach for $${c.loyalty + 2}</span>` : `on the market at $${Math.max(2, c.price - c.drift)}, falling`}. <span class="who">${esc(c.what)}.</span></li>`).join('')}</ul></div>
     ${flags.length ? `<p class="flags">${flags.map(esc).join('. ')}.</p>` : ''}`;
   renderUnit();
   renderRoster();
@@ -235,7 +235,7 @@ function renderUnit() {
   const mine = u.side === P;
   const ab = u.kind === 'staff' && u.job >= 0 ? ABILITY[u.job] : null;
   let h = `<div class="unit"><h3 style="color:${mine ? YOU : THEM}">${esc(u.name)}</h3>
-    <p class="job">${u.kind === 'contractor' ? `Contractor, leaves after turn ${u.expires - 1}` : ROLE_NAME[u.job]}${u.leader ? ', leader' : ''}. Wants ${TASTE[u.taste]}. Moves ${G.moveOf(u)}.</p>
+    <p class="job">${u.kind === 'contractor' ? `Contractor, leaves after turn ${u.expires - 1}` : ROLE_NAME[u.job]}${u.leader ? ', leader' : ''}. Wants ${TASTE[u.taste]}. Moves ${G.moveOf(u)}${u.cards.length >= A.HEAVY_LOAD ? ', slowed by the load' : ''}.</p>
     <div class="bar ${mine ? '' : 'them'}"><i style="width:${100 * u.morale / u.max}%"></i></div><p class="who">Morale ${u.morale} of ${u.max}</p>
     <div class="stats4">${STAT_NAME.map((n, i) => `<div><b>${u.stats[i]}</b>${n}</div>`).join('')}</div>
     ${ab ? `<p class="abil"><b>${ab.name}</b>: ${esc(ab.what)}. ${u.cd ? `Ready in ${u.cd} turn${u.cd === 1 ? '' : 's'}.` : 'Ready.'}</p>` : ''}
@@ -264,7 +264,7 @@ function renderUnit() {
 
 function renderRoster() {
   const row = u => {
-    const where = u.gone ? 'gone' : u.sulk ? `sulking, back in ${u.sulk}` : `${u.morale}/${u.max}`;
+    const where = u.gone ? 'gone' : u.sulk >= 99 ? 'out for the match' : u.sulk ? `sulking, back in ${u.sulk}` : `${u.morale}/${u.max}`;
     return `<button class="rrow ${UI.sel === u.id ? 'on' : ''} ${(u.side === P && UI.turn && u.acted) || u.sulk ? 'done' : ''}" data-id="${u.id}" ${u.sulk || u.gone ? 'disabled' : ''}>
       <span>${esc(u.name)} <small>${u.kind === 'contractor' ? 'contractor' : ROLE_NAME[u.job]}${u.cards.length ? `, ${u.cards.length} card${u.cards.length === 1 ? '' : 's'}` : ''}</small></span>
       <span class="bar ${u.side === P ? '' : 'them'}"><i style="width:${100 * u.morale / u.max}%"></i></span><small>${where}</small></button>`;
@@ -305,7 +305,7 @@ function setupFlow() {
     const cfg = { role: 0, stats: [0, 0, 0, 0], party: [] };
     let base = [0, 0, 0, 0];
     const pageJob = () => sheet(`<h2>Who are you?</h2>
-      <p>You lead a party through the office for twelve turns: arguing their people down, looting desks and closets, winning the crowd over. Then a final talk decides it, unless you break their whole party first.</p>
+      <p>You lead a party through a small office for eight turns: arguing their people down, looting the desks between you and the closets behind them, winning the crowd over. Then three slides each decide it, unless you break their whole party first.</p>
       <div class="jobs">${PLAYABLE.map(r => `<button class="job" data-r="${r}"><b>${ROLE_NAME[r]}</b>
         <small>${ABILITY[r].name}: ${esc(ABILITY[r].what)}</small><small>Wants ${ROLE_TASTES[r].map(t => TASTE[t]).join(' or ')}</small>
         <small>${ROLE_STATS[r].map((v, i) => `${STAT_NAME[i]} ${v}`).join(', ')}</small></button>`).join('')}</div>`,
@@ -317,7 +317,7 @@ function setupFlow() {
           <button class="pm" data-i="${i}" data-d="-1" aria-label="less ${n}" ${cfg.stats[i] <= base[i] ? 'disabled' : ''}>−</button>
           <span class="v">${cfg.stats[i]}</span>
           <button class="pm" data-i="${i}" data-d="1" aria-label="more ${n}" ${left <= 0 || cfg.stats[i] >= A.STAT_MAX ? 'disabled' : ''}>+</button></div>`).join('')}
-        <p style="margin-top:10px">${left} point${left === 1 ? '' : 's'} left. Morale is ${9 + 2 * cfg.stats[3]}; you move ${3 + Math.floor(cfg.stats[2] / 2)} tiles.</p>
+        <p style="margin-top:10px">${left} point${left === 1 ? '' : 's'} left. Morale is ${9 + 2 * cfg.stats[3]}; you move ${3 + Math.floor(cfg.stats[2] / 2)} tiles, one less when carrying three cards.</p>
         <div class="row"><button class="btn alt" id="back">Pick another job</button><button class="btn" id="next">Choose your party</button></div>`,
         el => {
           el.querySelectorAll('.pm').forEach(b => b.onclick = () => { cfg.stats[+b.dataset.i] += +b.dataset.d; pageStats(); });
@@ -340,31 +340,37 @@ function setupFlow() {
   });
 }
 
-function talkSheet(t, mode, resolve) {
-  const mine = t.side === P;
-  const fans = TASTE.map((_, i) => G.fans(t, i));
-  const tot = Math.max(t.claps + t.boos, 1);
-  let body = `<h2>${mine ? 'Your final talk' : 'Their final talk'}</h2>
-    <p>In the room: ${t.audience.length} on ${mine ? 'your' : 'their'} side, ${t.booers.length} of ${mine ? 'theirs' : 'yours'} here to boo.${t.blanked ? ` The projector was rigged: ${esc(t.blanked.name)} is now a blank slide.` : ''}</p>
-    <div class="wants">${TASTE.map((n, i) => `<div><b>${fans[i]}</b><span>${TASTE_GLYPH[i]} ${n}</span></div>`).join('')}</div>
-    <div class="meter ${mine ? '' : 'them'}"><div class="c" style="width:${100 * t.claps / tot}%"></div><div class="b" style="width:${100 * t.boos / tot}%"></div></div>
-    <div class="tally">${t.claps} claps, ${t.boos} boos</div>
-    ${t.lines.length ? `<ol class="lines">${t.lines.map(l => `<li>${esc(l)}</li>`).join('')}</ol>` : ''}`;
+function talkSheet(T, mode, resolve) {
+  const S = T.sides[P], E = T.sides[N];
+  const fans = TASTE.map((_, i) => G.fans(T, P, i));
+  const meter = (X, cls) => { const tot = Math.max(X.claps + X.boos, 1); return `<div class="meter ${cls}"><div class="c" style="width:${100 * X.claps / tot}%"></div><div class="b" style="width:${100 * X.boos / tot}%"></div></div><div class="tally">${X.claps} claps, ${X.boos} boos</div>`; };
+  let body = `<h2>${mode === 'pick' ? 'Pick your three slides' : 'The final talks'}</h2>
+    <p>In the room for you: ${S.audience.length} of yours, ${S.booers.length} of theirs to boo. For them: ${E.audience.length} of theirs, ${E.booers.length} of yours.${S.blanked ? ` Your projector was rigged: ${esc(S.blanked.name)} came up blank.` : ''}</p>
+    <div class="wants">${TASTE.map((n, i) => `<div><b>${fans[i]}</b><span>${TASTE_GLYPH[i]} ${n}</span></div>`).join('')}</div>`;
   let wire = null;
-  if (mode === 'slide') {
-    body += `<h3>Slide ${t.played.length + 1} of ${t.slidesMax}</h3><div class="row">${t.hand.map((c, i) => `<button class="slide" data-i="${i}">
-      <b>${c.taste >= 0 ? TASTE_GLYPH[c.taste] + ' ' : ''}${esc(c.name)}</b>
-      <small>${c.taste < 0 ? 'blank; boos' : `quality ${c.q}; ${fans[c.taste]} want ${TASTE[c.taste]}; about ${G.slideClaps(t, c)} claps`}</small></button>`).join('')}</div>`;
-    wire = el => el.querySelectorAll('.slide').forEach(b => b.onclick = () => resolve(+b.dataset.i));
-  } else if (mode === 'heckle') {
-    const who = t.booers[Math.floor(Math.random() * t.booers.length)];
-    body += `<p class="heckle">${who ? esc(who.name) + ': ' : ''}“${esc(HECKLES[Math.floor(Math.random() * HECKLES.length)])}”</p>
-      <div class="row"><button class="btn alt" id="ign">Let it go, +${G.ignoreCost(t)} boos</button><button class="btn" id="cb">Clap back, ${Math.round(100 * G.heckleOdds(t))}% to land</button></div>
-      <p class="who" style="margin-top:8px">Landing is +10 claps. Missing is +6 boos.</p>`;
-    wire = el => { el.querySelector('#ign').onclick = () => resolve(false); el.querySelector('#cb').onclick = () => resolve(true); };
-  } else if (mode === 'end') {
-    body += `<h3>${t.score} all told</h3><div class="row"><button class="btn" id="ok">${mine ? 'Their turn at the Rock' : 'The verdict'}</button></div>`;
-    wire = el => el.querySelector('#ok').onclick = () => { closeSheet(); resolve(); };
+  if (mode === 'pick') {
+    const picked = talkSheet.picked || (talkSheet.picked = []);
+    body += `<p class="who">You will not see their three until the slides go up, and they alternate: a slide that repeats the taste the room just saw gets nothing. ${S.hand.length ? `Pick ${Math.min(3, S.hand.length)} of your ${S.hand.length}.` : 'You have no cards at all.'}</p>
+      <div class="row">${S.hand.map((c, i) => `<button class="slide ${picked.includes(i) ? 'hot' : ''}" data-i="${i}" style="${picked.includes(i) ? `box-shadow:4px 4px 0 ${HI};background:#fff6fb` : ''}">
+        <b>${picked.includes(i) ? (picked.indexOf(i) + 1) + '. ' : ''}${TASTE_GLYPH[c.taste]} ${esc(c.name)}</b><small>quality ${c.q}; ${fans[c.taste]} in your room want ${TASTE[c.taste]}; about ${G.slideClaps(T, P, c)} claps</small></button>`).join('')}</div>
+      <div class="row"><button class="btn" id="go" ${picked.length < Math.min(3, S.hand.length) ? 'disabled' : ''}>Present these</button></div>`;
+    wire = el => {
+      el.querySelectorAll('.slide').forEach(b => b.onclick = () => { const i = +b.dataset.i; const k = picked.indexOf(i); if (k >= 0) picked.splice(k, 1); else if (picked.length < 3) picked.push(i); talkSheet(T, 'pick', resolve); });
+      el.querySelector('#go').onclick = () => { const out = picked.slice(); talkSheet.picked = null; resolve(out); };
+    };
+  } else {
+    body += `<p><b style="color:${YOU}">You</b></p>${meter(S, '')}<p style="margin-top:8px"><b style="color:${THEM}">Them</b></p>${meter(E, 'them')}
+      ${T.lines.length ? `<ol class="lines">${T.lines.map(l => `<li>${esc(l)}</li>`).join('')}</ol>` : ''}`;
+    if (mode === 'heckle') {
+      const who = S.booers[Math.floor(Math.random() * S.booers.length)];
+      body += `<p class="heckle">${who ? esc(who.name) + ': ' : ''}“${esc(HECKLES[Math.floor(Math.random() * HECKLES.length)])}”</p>
+        <div class="row"><button class="btn alt" id="ign">Let it go, +${G.ignoreCost(P)} boos</button><button class="btn" id="cb">Clap back, ${Math.round(100 * G.heckleOdds(P))}% to land</button></div>
+        <p class="who" style="margin-top:8px">Landing is +10 claps. Missing is +6 boos.</p>`;
+      wire = el => { el.querySelector('#ign').onclick = () => resolve(false); el.querySelector('#cb').onclick = () => resolve(true); };
+    } else if (mode === 'end') {
+      body += `<h3>You ${S.score}, them ${E.score}</h3><div class="row"><button class="btn" id="ok">The verdict</button></div>`;
+      wire = el => el.querySelector('#ok').onclick = () => { closeSheet(); resolve(); };
+    }
   }
   sheet(body, wire);
 }
@@ -374,12 +380,12 @@ function verdict() {
     const w = G.winner;
     const head = w === P ? 'You take the office.' : w === N ? 'Your nemesis takes the office.' : 'Dead level.';
     const why = G.how === 'rout' ? (w === P ? 'Their entire party is sulking in the car park at once.' : 'Your entire party is sulking in the car park at once.')
-      : `Final talks: you ${G.scores[P]}, them ${G.scores[N]}.`;
+      : `Final talks: you ${G.scores[P]}, them ${G.scores[N]}${G.scores[P] === G.scores[N] ? ', settled on the size of the crowd' : ''}.`;
     sheet(`<h2>${head}</h2><p>${why}</p>
       <table class="rc"><thead><tr><th></th><th style="color:${YOU}">You</th><th style="color:${THEM}">Them</th></tr></thead><tbody>
       <tr><td>Enemies broken</td><td>${G.breaks[P]}</td><td>${G.breaks[N]}</td></tr>
       <tr><td>Crowd won over</td><td>${G.crowd[P].length}</td><td>${G.crowd[N].length}</td></tr>
-      <tr><td>Cards held at the end</td><td>${G.hand(P).length}</td><td>${G.hand(N).length}</td></tr>
+      <tr><td>Cards brought to the talk</td><td>${G.hand(P).length}</td><td>${G.hand(N).length}</td></tr>
       <tr><td>Consultants retained</td><td>${G.consultants.filter(c => c.side === P).length}</td><td>${G.consultants.filter(c => c.side === N).length}</td></tr>
       </tbody></table><div class="row"><button class="btn" id="ok">Play again</button></div>`,
       el => el.querySelector('#ok').onclick = () => { closeSheet(); res(); });
@@ -389,8 +395,8 @@ function verdict() {
 // --- wiring ---------------------------------------------------------------------
 const agent = {
   playTurn() { return new Promise(res => { UI.turn = res; nextUnit(); render(); }); },
-  chooseSlide(t) { return new Promise(res => talkSheet(t, 'slide', res)); },
-  chooseHeckle(t) { return new Promise(res => talkSheet(t, 'heckle', res)); },
+  pickSlides(T) { return new Promise(res => talkSheet(T, 'pick', res)); },
+  chooseHeckle(T) { return new Promise(res => talkSheet(T, 'heckle', res)); },
 };
 const hooks = {
   async turnStart() {
@@ -406,9 +412,10 @@ const hooks = {
     UI.plan = null;
   },
   async enemyActed() { render(); await sleep(380); },
-  async talkStart(t) { render(); if (t.side === N) { talkSheet(t, 'watch'); await sleep(900); } },
-  async talkUpdate(t) { if (t.side === N) { talkSheet(t, 'watch'); await sleep(700); } },
-  async talkEnd(t) { await new Promise(res => talkSheet(t, 'end', res)); },
+  async allHands() { render(); await banner('All hands', 1000); },
+  async talkStart(T) { talkSheet(T, 'watch'); await sleep(700); },
+  async talkUpdate(T) { talkSheet(T, 'watch'); await sleep(RELAX ? 100 : 750); },
+  async talkEnd(T) { await new Promise(res => talkSheet(T, 'end', res)); },
   async matchEnd() { render(); await verdict(); start(); },
 };
 
