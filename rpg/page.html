@@ -33,7 +33,10 @@
 .mv.attack .l { color: var(--you); }
 .help { width: 34px; height: 34px; border-radius: 50%; border: 2px solid #f6e9d8; background: none; color: #f6e9d8; font-family: var(--hand); font-size: 26px; font-weight: 700; line-height: 1; cursor: pointer; align-self: center; }
 .help:hover { background: #f6e9d8; color: var(--gum); }
-.rules p { max-width: 62ch; }
+.rules p { max-width: 68ch; }
+.rules ul { margin: 4px 0 8px; padding-left: 20px; max-width: 68ch; }
+.rules li { margin: 3px 0; }
+.rules h3 { margin-top: 16px; }
 .cons li.near { background: #fff6fb; margin-left: -4px; padding-left: 4px; border-radius: 3px; }
 .reach { color: var(--you); font-weight: 700; font-size: 12px; }
 .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid var(--ink); vertical-align: -1px; margin-right: 5px; }
@@ -104,6 +107,17 @@ function unitTitle(u) {
     `Charm ${u.stats[0]}, Guile ${u.stats[1]}, Hustle ${u.stats[2]}, Grit ${u.stats[3]}. Wants ${TASTE[u.taste]}. Carrying ${u.cards.length}.`;
 }
 
+// Icons for the places, drawn in pen at cell size.
+const ICON = {
+  data: (X, Y) => `<g stroke="${INK}" stroke-width="2.2" stroke-linecap="round"><line x1="${X + 13}" y1="${Y + 30}" x2="${X + 13}" y2="${Y + 22}"/><line x1="${X + 20}" y1="${Y + 30}" x2="${X + 20}" y2="${Y + 13}"/><line x1="${X + 27}" y1="${Y + 30}" x2="${X + 27}" y2="${Y + 18}"/><line x1="${X + 33}" y1="${Y + 30}" x2="${X + 33}" y2="${Y + 9}"/><line x1="${X + 9}" y1="${Y + 32}" x2="${X + 37}" y2="${Y + 32}"/></g>`,
+  story: (X, Y) => `<g fill="#fff" stroke="${INK}" stroke-width="2" stroke-linejoin="round"><path d="M${X + 23} ${Y + 13} q-6 -4 -13 -1 v18 q7 -3 13 1 z"/><path d="M${X + 23} ${Y + 13} q6 -4 13 -1 v18 q-7 -3 -13 1 z"/></g><g stroke="${INK}" stroke-width="1.2" opacity=".6"><line x1="${X + 14}" y1="${Y + 18}" x2="${X + 20}" y2="${Y + 17}"/><line x1="${X + 14}" y1="${Y + 22}" x2="${X + 20}" y2="${Y + 21}"/><line x1="${X + 26}" y1="${Y + 17}" x2="${X + 32}" y2="${Y + 18}"/><line x1="${X + 26}" y1="${Y + 21}" x2="${X + 32}" y2="${Y + 22}"/></g>`,
+  gadget: (X, Y) => { const c = `${X + 23} ${Y + 21}`; let g = `<g stroke="${INK}" stroke-width="3" stroke-linecap="round">`; for (let i = 0; i < 8; i++) g += `<line x1="${X + 23}" y1="${Y + 21 - 8}" x2="${X + 23}" y2="${Y + 21 - 12}" transform="rotate(${i * 45} ${c})"/>`; return g + `</g><circle cx="${X + 23}" cy="${Y + 21}" r="8" fill="#fff" stroke="${INK}" stroke-width="2.4"/><circle cx="${X + 23}" cy="${Y + 21}" r="3" fill="${INK}"/>`; },
+  snacks: (X, Y) => `<text x="${X + 23}" y="${Y + 28}" text-anchor="middle" font-size="22" fill="${INK}">☕</text>`,
+  rock: (X, Y) => `<path d="M${X + 12} ${Y + 12} l22 -4 l0 9 l-22 4 z" fill="#fff" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/><rect x="${X + 19}" y="${Y + 20}" width="8" height="15" fill="#fff" stroke="${INK}" stroke-width="2"/><line x1="${X + 12}" y1="${Y + 36}" x2="${X + 34}" y2="${Y + 36}" stroke="${INK}" stroke-width="2.4" stroke-linecap="round"/><circle cx="${X + 31}" cy="${Y + 4}" r="2.2" fill="${INK}"/><line x1="${X + 31}" y1="${Y + 6}" x2="${X + 31}" y2="${Y + 9}" stroke="${INK}" stroke-width="1.6"/>`,
+  lobby: (X, Y) => `<path d="M${X + 13} ${Y + 27} a10 10 0 0 1 20 0 z" fill="#fff" stroke="${INK}" stroke-width="2"/><line x1="${X + 9}" y1="${Y + 30}" x2="${X + 37}" y2="${Y + 30}" stroke="${INK}" stroke-width="2.4" stroke-linecap="round"/><circle cx="${X + 23}" cy="${Y + 14}" r="2" fill="${INK}"/><text class="hand" x="${X + 23}" y="${Y + 43}" text-anchor="middle" font-size="12" fill="${INK}" opacity=".7">reception</text>`,
+  closet: (X, Y, open) => `<rect x="${X + 10}" y="${Y + 8}" width="26" height="30" rx="2" fill="${open ? 'none' : '#fff3c4'}" stroke="${INK}" stroke-width="2" ${open ? 'stroke-dasharray="3 3"' : ''}/>${open ? '' : `<line x1="${X + 23}" y1="${Y + 8}" x2="${X + 23}" y2="${Y + 38}" stroke="${INK}" stroke-width="1.6"/><circle cx="${X + 20}" cy="${Y + 24}" r="1.6" fill="${INK}"/><circle cx="${X + 26}" cy="${Y + 24}" r="1.6" fill="${INK}"/><text x="${X + 23}" y="${Y + 20}" text-anchor="middle" font-size="11" fill="${INK}">★</text>`}`,
+};
+
 // --- the floor ---------------------------------------------------------------
 function drawBoard() {
   const sel = UI.sel ? G.byId(UI.sel) : null;
@@ -120,8 +134,8 @@ function drawBoard() {
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const t = G.map[y][x], X = OX + x * CS, Y = OY + y * CS;
     if (t === 'a' || t === 'b') s += `<rect x="${X}" y="${Y}" width="${CS}" height="${CS}" fill="${t === 'a' ? YOU : THEM}" opacity=".08"/>`;
-    if (t === 'R') s += `<rect x="${X + 1}" y="${Y + 1}" width="${CS - 2}" height="${CS - 2}" fill="#d9cfa0" stroke="${INK}" stroke-width="1"/>`;
-    if (t === 'L') s += `<circle cx="${X + CS / 2}" cy="${Y + CS / 2}" r="15" fill="#fff" stroke="${INK}" stroke-width="1.6"/><text x="${X + CS / 2}" y="${Y + CS / 2 + 8}" text-anchor="middle" class="hand" font-size="24" font-weight="700" fill="${INK}">$</text>`;
+    if (t === 'R') s += `<rect x="${X + 1}" y="${Y + 1}" width="${CS - 2}" height="${CS - 2}" fill="#e6dcae"/>${ICON.rock(X, Y)}`;
+    if (t === 'L') s += ICON.lobby(X, Y);
     if (reach[key(x, y)] !== undefined) s += `<rect x="${X + 2}" y="${Y + 2}" width="${CS - 4}" height="${CS - 4}" fill="${HI}" opacity=".45" class="tile" data-x="${x}" data-y="${y}"/>`;
   }
   // walls, as one inked path
@@ -132,13 +146,12 @@ function drawBoard() {
     const t = G.map[y][x], X = OX + x * CS, Y = OY + y * CS;
     if (DESKS[t] !== undefined) {
       const st = G.stock[key(x, y)];
-      s += `<g><title>${TASTE[DESKS[t]]} desk, ${st} card${st === 1 ? '' : 's'} left${st ? '' : '; cleared out'}</title><rect x="${X + 3}" y="${Y + 4}" width="${CS - 6}" height="${CS - 8}" fill="${st ? '#fff' : 'none'}" stroke="${INK}" stroke-width="2" ${st ? '' : 'stroke-dasharray="3 3"'} filter="url(#pen)"/>
-        <text x="${X + CS / 2}" y="${Y + CS / 2 + 4}" text-anchor="middle" font-size="19" fill="${INK}">${TASTE_GLYPH[DESKS[t]]}</text>`;
-      for (let i = 0; i < st; i++) s += `<circle cx="${X + 12 + i * 8}" cy="${Y + CS - 9}" r="2.6" fill="${INK}"/>`;
+      s += `<g><title>${TASTE[DESKS[t]]} desk, ${st} card${st === 1 ? '' : 's'} left${st ? '' : '; cleared out'}</title><rect x="${X + 3}" y="${Y + 3}" width="${CS - 6}" height="${CS - 6}" fill="${st ? '#fff' : 'none'}" stroke="${INK}" stroke-width="2" ${st ? '' : 'stroke-dasharray="3 3"'} filter="url(#pen)"/>
+        <g opacity="${st ? 1 : 0.35}">${ICON[['data', 'story', 'gadget', 'snacks'][DESKS[t]]](X, Y)}</g>`;
+      for (let i = 0; i < st; i++) s += `<circle cx="${X + 9 + i * 7}" cy="${Y + 10}" r="2.4" fill="${INK}"/>`;
       s += `</g>`;
     }
-    if (t === 'C' || t === 'c') s += `<g><title>${t === 'C' ? (G.raidable(P, x) ? 'Their supply closet: two good slides inside, yours to raid' : 'Your supply closet: locked to you, theirs to raid') : 'An emptied supply closet'}</title><rect x="${X + 3}" y="${Y + 3}" width="${CS - 6}" height="${CS - 6}" fill="${t === 'C' ? '#fff3c4' : 'none'}" stroke="${INK}" stroke-width="2" ${t === 'c' ? 'stroke-dasharray="3 3"' : ''}/>
-      ${t === 'C' ? `<text x="${X + CS / 2}" y="${Y + CS / 2 + 7}" text-anchor="middle" font-size="22" fill="${INK}">★</text>` : ''}</g>`;
+    if (t === 'C' || t === 'c') s += `<g><title>${t === 'C' ? (G.raidable(P, x) ? 'Their supply closet: two good slides inside, yours to raid' : 'Your supply closet: locked to you, theirs to raid') : 'An emptied supply closet'}</title>${ICON.closet(X, Y, t === 'c')}</g>`;
   }
   for (const [x, y, l] of LABELS) s += `<text class="hand" x="${cx(x)}" y="${OY + y * CS + 11}" text-anchor="middle" font-size="17" fill="${INK}" opacity=".55">${l}</text>`;
   // loot on the floor
@@ -194,6 +207,7 @@ function drawBoard() {
   }
   const svg = $('#board');
   svg.innerHTML = s;
+  const legendEl = $('#legend'); if (legendEl && !legendEl.innerHTML) legend();
   svg.querySelectorAll('.tile').forEach(el => el.addEventListener('click', () => {
     if (!UI.turn || !sel) return;
     G.moveUnit(sel, +el.dataset.x, +el.dataset.y);
@@ -222,7 +236,10 @@ function legend() {
     <span><svg width="26" height="26" viewBox="-13 -13 26 26"><rect x="-9" y="-9" width="18" height="18" rx="4" fill="#fffdf6" stroke="${INK}" stroke-width="1.6" stroke-dasharray="3 2"/></svg>contractor for hire</span>
     <span><svg width="26" height="26" viewBox="-13 -13 26 26"><circle r="12" fill="${HI}" opacity=".75"/><circle r="8" fill="#fffdf6" stroke="${INK}"/></svg>within reach of the unit you picked</span>
     <span><svg width="26" height="26" viewBox="0 0 26 26"><rect x="5" y="4" width="14" height="18" fill="#fff" stroke="${INK}" stroke-width="1.5"/></svg>loot on the floor</span>
-    <span>★ supply closet &nbsp; $ the Lobby &nbsp; ${TASTE.map((t, i) => `${TASTE_GLYPH[i]} ${t}`).join(', ')}</span>
+    <span><svg width="30" height="30" viewBox="0 0 46 46">${ICON.closet(0, 0, false)}</svg>supply closet</span>
+    <span><svg width="30" height="30" viewBox="0 0 46 46">${ICON.rock(0, 0)}</svg>the Rock</span>
+    <span><svg width="30" height="30" viewBox="0 0 46 46">${ICON.lobby(0, 0)}</svg>the Lobby</span>
+    <span>desks: <svg width="24" height="24" viewBox="4 4 38 38">${ICON.data(0, 0)}</svg>Data <svg width="24" height="24" viewBox="4 4 38 38">${ICON.story(0, 0)}</svg>Story <svg width="24" height="24" viewBox="4 4 38 38">${ICON.gadget(0, 0)}</svg>Gadget ☕ Snacks</span>
     <span>Tinted tiles are your office: bank cards there.</span>`;
 }
 
@@ -273,7 +290,7 @@ function renderUnit() {
   const u = UI.sel ? G.byId(UI.sel) : null;
   if (!u || u.sulk || u.gone) {
     card.innerHTML = `<h2>${UI.turn ? 'Pick someone' : 'Watching'}</h2><p class="waiting">${UI.turn ? 'Click one of your people on the floor.' : 'Their party is moving…'}</p>
-      ${UI.turn ? `<div class="ctl"><button class="btn" id="endturn">End turn</button></div>` : ''}`;
+      ${UI.turn ? `<div class="ctl">${endTurnButton()}</div>` : ''}`;
     const e = $('#endturn'); if (e) e.onclick = endTurn;
     return;
   }
@@ -293,7 +310,7 @@ function renderUnit() {
       if (!u.moved) h += `<p class="who">Click a pink tile to move, or act from here.</p>`;
       h += `<div class="cards">${acts.map((o, i) => `<button class="mv ${o.kind === 'confront' ? 'attack' : ''} ${['rig', 'pickpocket'].includes(o.kind) ? 'trick' : ''}" data-i="${i}"><span class="l">${esc(o.label)}</span><span class="st"></span><span class="s">${esc(o.sub)}</span></button>`).join('')}</div>`;
     }
-    h += `<div class="ctl">${u.from && !u.acted ? '<button class="btn alt" id="undo">Undo move</button>' : ''}<button class="btn" id="endturn">End turn</button></div>`;
+    h += `<div class="ctl">${u.from && !u.acted ? '<button class="btn alt" id="undo">Undo move</button>' : ''}${endTurnButton()}</div>`;
   }
   card.innerHTML = h;
   card.querySelectorAll('.mv').forEach(btn => {
@@ -333,7 +350,20 @@ function doAct(u, o) {
 }
 function endTurn() {
   if (!UI.turn) return;
-  const r = UI.turn; UI.turn = null; UI.sel = null; r();
+  const left = G.active(P).filter(v => !v.acted);
+  if (left.length) {
+    if (!$('#veil').hidden) return;
+    sheet(`<h2>End the turn for all?</h2><p>${left.length === 1 ? `${esc(left[0].name)} has` : `${left.length} of yours have`} not gone yet: ${left.map(v => esc(v.name)).join(', ')}. ${G.turn >= A.HOLD_COST_FROM ? 'Anyone left standing loses a point of morale for holding.' : 'They will simply hold.'}</p>
+      <div class="row"><button class="btn alt" id="no">Keep playing</button><button class="btn" id="yes">End the turn</button></div>`,
+      el => { el.querySelector('#no').onclick = closeSheet; el.querySelector('#yes').onclick = () => { closeSheet(); for (const v of left) G.act(v, { kind: 'wait' }); finishTurn(); }; });
+    return;
+  }
+  finishTurn();
+}
+function finishTurn() { const r = UI.turn; UI.turn = null; UI.sel = null; r(); }
+function endTurnButton() {
+  const left = G.active(P).filter(v => !v.acted).length;
+  return `<button class="btn ${left ? 'alt' : ''}" id="endturn" title="${left ? left + ' still to go' : 'Everyone has gone'}">End turn for all${left ? ` (${left} left)` : ''}</button>`;
 }
 
 // --- sheets -------------------------------------------------------------------
@@ -437,9 +467,44 @@ function verdict() {
   });
 }
 
+const RULES = [
+  ['How to start', `<p>Pick a job: it sets your starting stats, what you want to hear in a talk, and your ability. Spend four points on Charm, Guile, Hustle and Grit. Then choose up to four colleagues. Each is a unit you will move, with their own job and ability. Your nemesis is dealt a job and brings as many colleagues as you did.</p>
+    <p>The two parties start in their offices at either end of one small floor. The desks are in the middle, the Rock at the top, the Lobby at the bottom, and each side's supply closets are behind its office.</p>`],
+  ['A turn', `<p>The match is eight turns. Each turn, both parties go: whoever opened the last turn closes this one. On your go, every one of your people may move up to their move (3, plus one for every two points of Hustle) and then do one thing:</p>
+    <ul><li><b>Argue</b> with an enemy on an adjacent tile. Your Charm against their Grit, in morale; they answer back for half.</li>
+    <li><b>Take a card</b> from an adjacent desk. Two per desk, and they do not restock.</li>
+    <li><b>Raid</b> the other side's supply closet for two good slides. Your own closets are locked to you.</li>
+    <li><b>Pitch</b> somebody undecided. Two pitches and they are your follower. Pitching someone the other side has been courting wears that down first.</li>
+    <li><b>Use the job ability</b>, then wait three turns for it to come back.</li>
+    <li><b>Pickpocket</b> an enemy who is carrying cards.</li>
+    <li><b>Bank</b> your cards in your own office, or <b>rig</b> or <b>check</b> the projector at the Rock.</li>
+    <li><b>Hold.</b> From turn 4, holding costs a point of morale.</li></ul>
+    <p>Press <b>End turn for all</b> when you are done. Anyone who has not gone holds.</p>`],
+  ['Morale and breaking', `<p>Morale is a unit's health. At zero they are demoralised: they drop every card they carry onto the floor and sulk in the car park for two turns, coming back at 2 morale. Contractors simply quit.</p>
+    <p>In the last two turns, anyone broken stays broken. Break the whole enemy party at once and you win on the spot.</p>`],
+  ['Followers', `<p>Followers are the only thing you keep. Every undecided person on the floor can be won over, and every one you win fills a seat at your final talk, wanting a particular taste of slide. A room full of people who want Data makes a Data slide land; a room that wants nothing you brought stays quiet.</p>
+    <p>When time is called, every undecided person still on the floor goes with whichever party has more people standing beside them. Where your units end the last turn matters.</p>`],
+  ['The Lobby', `<p>Consultants and contractors wait in the Lobby and are won by pitching, like anyone else. A consultant takes three pitches, then gives your side a standing rule for the rest of the match; the other side can pitch them back. A contractor signs on one pitch, joins your party for two turns, and then goes back to the Lobby to be signed again.</p>`],
+  ['Ending and winning', `<p>After the eighth turn, both leaders present. Each picks three slides from every card their party still holds, banked or carried, without seeing the other's. The slides then go up in turns, one side then the other.</p>
+    <p>A slide scores its quality times (2 + 3 × the people in your room who want that taste), times a little for your Charm. A slide of the same taste as the one the room just saw, from either side, scores nothing. Every enemy unit in the room boos each of your slides, and one of them heckles you: let it go for a few boos, or clap back for a big gain or a bigger loss. A rigged projector blanks your best slide unless somebody checked it.</p>
+    <p>Higher claps minus boos takes the office. A tie goes to the bigger crowd.</p>`],
+  ['What the numbers mean', `<ul><li><b>Followers</b> in the header: seats in your room at the talk, by taste.</li>
+    <li><b>Your crowd and party want</b>: how many in your room want each taste. Fetch cards to match.</li>
+    <li><b>Cards held</b>: what you can bring to the talk. Quality 1 from desks, 2 or 3 from closets. Banked cards cannot be lost.</li>
+    <li><b>Morale</b> on every token and in the roster. Orange means one more argument breaks them.</li>
+    <li><b>Warming</b> on the undecided: pitches so far out of the pitches they need, in the colour of the side they lean to.</li>
+    <li><b>Moves</b> on the unit card: how far they go this turn, one less when carrying three cards.</li></ul>`],
+  ['Notes on strategy', `<ul><li>The desks empty fast and are between you. Whoever gets there first with two units usually keeps them.</li>
+    <li>Fetch what your room wants, not what is nearest. Three Data slides in a row score once.</li>
+    <li>Carriers are targets. Bank early, or send a fast unit home with the closet loot.</li>
+    <li>Argue in pairs. One unit softens, the next breaks, and the cards fall to whoever is standing there.</li>
+    <li>A unit at 2 morale that just came back is bait, and the other side knows it.</li>
+    <li>Spend the last two turns standing next to the undecided. All hands rewards bodies, not cards.</li>
+    <li>Consultants are three actions for a whole-match rule. The Keynote Coach alone is worth about nine claps.</li></ul>`],
+];
 function howToPlay() {
   if (!$('#veil').hidden) return;
-  sheet(`<h2>How it plays</h2><div class="rules"><p>Eight turns on one small floor. The desks are in the middle, between the parties; the supply closets are behind each party's office and locked to their own side, so raiding one means going through the people it belongs to. Each turn every one of your people moves and does one thing: argue with an enemy next to them, take a card from a desk, raid a closet, pitch somebody undecided, use their job's ability, bank their cards in your office, or rig the projector at the Rock.</p><p>Carrying three or more cards slows a unit by a tile. Banked cards are safe; carried ones can be picked from a pocket or dropped when their carrier is broken. A unit at zero morale drops everything and sulks two turns, coming back at 2 morale. From turn 4, holding still costs a point of morale.</p><p>The last two turns are all hands: anyone broken stays broken, and when time is called every undecided neutral goes with whichever party has more people beside them. Break the whole enemy party at once and you win on the spot.</p><p>Then the talk. Each leader picks three slides without seeing the other's, and they are shown in turns. A slide of the same taste as the one the room just saw gets nothing. Quality times how many in the room want that taste, minus boos from their people, is your score.</p><p>The undecided are named on the floor and listed beside it. Two pitches and they are your follower, which is what fills the room at your talk. Consultants and contractors wait in the Lobby and are won the same way: a consultant takes three pitches and can be pitched back off you; a contractor signs on one and joins your party for two turns.</p></div>
+  sheet(`<h2>How it plays</h2><div class="rules">${RULES.map(([h, b]) => `<h3>${h}</h3>${b}`).join('')}</div>
     <div class="row"><button class="btn" id="ok">Back to the office</button></div>`,
     el => el.querySelector('#ok').onclick = closeSheet);
 }
@@ -482,7 +547,6 @@ async function start() {
   render();
   G.run(agent, hooks);
 }
-legend();
 start();
 </script>
 </body>
