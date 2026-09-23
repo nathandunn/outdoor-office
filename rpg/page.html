@@ -31,6 +31,9 @@
 .cons li { margin: 2px 0; }
 .cons ul { margin: 4px 0 0; padding-left: 18px; }
 .mv.attack .l { color: var(--you); }
+.help { width: 34px; height: 34px; border-radius: 50%; border: 2px solid #f6e9d8; background: none; color: #f6e9d8; font-family: var(--hand); font-size: 26px; font-weight: 700; line-height: 1; cursor: pointer; align-self: center; }
+.help:hover { background: #f6e9d8; color: var(--gum); }
+.rules p { max-width: 62ch; }
 </style>
 </head>
 <body>
@@ -40,6 +43,7 @@
       <h1>The Outdoor Office</h1>
       <span class="where" id="where"></span>
       <div class="score" id="score"></div>
+      <button class="help" id="help" aria-label="How it plays" title="How it plays">?</button>
     </header>
     <svg id="board" viewBox="0 0 1000 620" role="img" aria-label="Floor plan of the office with both parties on it"></svg>
     <div class="legend" id="legend"></div>
@@ -51,14 +55,6 @@
     <div class="idx minutes">
       <h2>Minutes</h2>
       <ol id="log" aria-live="polite"></ol>
-      <details>
-        <summary>How it plays</summary>
-        <p>Eight turns on one small floor. The desks are in the middle, between the parties; the supply closets are behind each party's office and locked to their own side, so raiding one means going through the people it belongs to. Each turn every one of your people moves and does one thing: argue with an enemy next to them, take a card from a desk, raid a closet, pitch a neutral, use their job's ability, bank their cards in your office, hire in the Lobby, or rig the projector at the Rock.</p>
-        <p>Carrying three or more cards slows a unit by a tile. Banked cards are safe; carried ones can be picked from a pocket or dropped when their carrier is broken. A unit at zero morale drops everything and sulks two turns, coming back at 2 morale. From turn 4, holding still costs a point of morale.</p>
-        <p>The last two turns are all hands: anyone broken stays broken, and when time is called every undecided neutral goes with whichever party has more people beside them. Break the whole enemy party at once and you win on the spot.</p>
-        <p>Then the talk. Each leader picks three slides without seeing the other's, and they are shown in turns. A slide of the same taste as the one the room just saw gets nothing. Quality times how many in the room want that taste, minus boos from their people, is your score.</p>
-        <p>Money is $3 a turn and does not carry over, plus $2 a break and $1 a recruit. Contractors are $3 for two turns. Consultants come down $1 each turn nobody buys them, and can be poached for $2 more than the buyer paid.</p>
-      </details>
     </div>
   </aside>
 </div>
@@ -391,6 +387,15 @@ function verdict() {
       el => el.querySelector('#ok').onclick = () => { closeSheet(); res(); });
   });
 }
+
+function howToPlay() {
+  if (!$('#veil').hidden) return;
+  sheet(`<h2>How it plays</h2><div class="rules"><p>Eight turns on one small floor. The desks are in the middle, between the parties; the supply closets are behind each party's office and locked to their own side, so raiding one means going through the people it belongs to. Each turn every one of your people moves and does one thing: argue with an enemy next to them, take a card from a desk, raid a closet, pitch a neutral, use their job's ability, bank their cards in your office, hire in the Lobby, or rig the projector at the Rock.</p><p>Carrying three or more cards slows a unit by a tile. Banked cards are safe; carried ones can be picked from a pocket or dropped when their carrier is broken. A unit at zero morale drops everything and sulks two turns, coming back at 2 morale. From turn 4, holding still costs a point of morale.</p><p>The last two turns are all hands: anyone broken stays broken, and when time is called every undecided neutral goes with whichever party has more people beside them. Break the whole enemy party at once and you win on the spot.</p><p>Then the talk. Each leader picks three slides without seeing the other's, and they are shown in turns. A slide of the same taste as the one the room just saw gets nothing. Quality times how many in the room want that taste, minus boos from their people, is your score.</p><p>Money is $3 a turn and does not carry over, plus $2 a break and $1 a recruit. Contractors are $3 for two turns. Consultants come down $1 each turn nobody buys them, and can be poached for $2 more than the buyer paid.</p></div>
+    <div class="row"><button class="btn" id="ok">Back to the office</button></div>`,
+    el => el.querySelector('#ok').onclick = closeSheet);
+}
+$('#help').onclick = howToPlay;
+document.addEventListener('keydown', e => { if (e.key === '?' && $('#veil').hidden) howToPlay(); });
 
 // --- wiring ---------------------------------------------------------------------
 const agent = {
