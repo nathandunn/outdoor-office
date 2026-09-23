@@ -151,7 +151,27 @@ table.rc { border-collapse: collapse; width: 100%; font-size: 15px; margin-top: 
 @media (prefers-reduced-motion: reduce) { .banner { transition: none; } }
 </style>
 <style>
-.table { grid-template-columns: minmax(0, 1fr) 400px; }
+.boardwrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+@media (min-width: 1001px) { .table { grid-template-columns: minmax(0, 1fr) 400px; } }
+/* Phones: the board first, as a side-scrolling strip at a size a finger can hit, then what the picked unit can do. */
+@media (max-width: 1000px) {
+  .table { grid-template-columns: minmax(0, 1fr); }
+  .col { display: contents; }
+  .pad { order: 1; } #unitcard { order: 2; } #status { order: 3; } #rostercard { order: 4; } .minutes { order: 5; }
+  #board { min-width: 740px; }
+  .boardwrap::after { content: "swipe the floor sideways"; display: block; text-align: center; font-size: 12px; color: var(--ink-soft); padding: 2px 0 4px; }
+  .legend { padding: 4px 12px 12px; }
+  .cards { max-height: none; }
+  .mv { padding: 9px 12px; }
+}
+.veil { display: flex; align-items: flex-start; justify-content: center; }
+.sheet { margin: auto; }
+.keybox > summary { cursor: pointer; font-family: var(--hand); font-size: 22px; padding: 2px 22px 6px; color: var(--ink-soft); list-style: none; }
+.keybox > summary::-webkit-details-marker { display: none; }
+.keybox > summary::before { content: "▸ "; } .keybox[open] > summary::before { content: "▾ "; }
+.fold > summary { cursor: pointer; list-style: none; padding: 2px 0; }
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::before { content: "▸ "; } .fold[open] > summary::before { content: "▾ "; }
 .bar { height: 7px; border: 1.5px solid var(--ink); border-radius: 2px; background: #fff; overflow: hidden; }
 .bar i { display: block; height: 100%; background: var(--you); }
 .bar.them i { background: var(--them); }
@@ -203,8 +223,8 @@ table.rc { border-collapse: collapse; width: 100%; font-size: 15px; margin-top: 
       <div class="score" id="score"></div>
       <button class="help" id="help" aria-label="How it plays" title="How it plays">?</button>
     </header>
-    <svg id="board" viewBox="0 0 1000 690" role="img" aria-label="Floor plan of the office with both parties on it"></svg>
-    <div class="legend" id="legend"></div>
+    <div class="boardwrap" id="boardwrap"><svg id="board" viewBox="0 0 1000 690" role="img" aria-label="Floor plan of the office with both parties on it"></svg></div>
+    <details class="keybox" id="keybox"><summary>Key</summary><div class="legend" id="legend"></div></details>
   </section>
   <aside class="col">
     <div class="idx status" id="status"></div>
@@ -1112,6 +1132,9 @@ const LABELS = [[3, 4, 'Your office'], [17, 4, 'Their office'], [12, 1, 'The Roc
 
 let G = null;
 const UI = { turn: null, sel: null, hover: null, plan: null, seen: 0 };
+const PHONE = matchMedia('(max-width: 1000px)').matches;
+UI.fold = { undecided: !PHONE, loot: !PHONE, lobby: !PHONE };
+if (!PHONE) document.getElementById('keybox').open = true;
 const cx = x => OX + x * CS + CS / 2, cy = y => OY + y * CS + CS / 2;
 // Paper white shading into a side's ink as somebody warms to it.
 function mix(hex, f) {
@@ -1251,6 +1274,13 @@ function drawBoard() {
   });
   const svg = $('#board');
   svg.innerHTML = s;
+  // On a narrow screen, bring whoever was just picked (or is moving) into view.
+  const wrap = $('#boardwrap');
+  if (sel && sel.x >= 0 && UI.scrolledTo !== sel.id && wrap.scrollWidth > wrap.clientWidth + 4) {
+    UI.scrolledTo = sel.id;
+    const px = (cx(sel.x) / 1000) * svg.getBoundingClientRect().width;
+    wrap.scrollTo({ left: Math.max(0, px - wrap.clientWidth / 2), behavior: RELAX ? 'auto' : 'smooth' });
+  }
   const legendEl = $('#legend'); if (legendEl && !legendEl.innerHTML) legend();
   svg.querySelectorAll('.tile').forEach(el => el.addEventListener('click', () => {
     if (!UI.turn || !sel) return;
@@ -1318,13 +1348,14 @@ function render() {
     <p>Your crowd and party want</p>
     <div class="wants">${TASTE.map((t, i) => `<div><b>${d[i]}</b><span>${TASTE_GLYPH[i]} ${t}</span></div>`).join('')}</div>
     ${flags.length ? `<p class="flags">${flags.map(esc).join('. ')}.</p>` : ''}
-    <div class="cons"><b>Undecided on the floor</b> <span class="who">(${G.neutrals.filter(n => n.kind === 'n').length}; two pitches each${canPitch.size ? `, ${canPitch.size} within reach of ${esc(G.byId(UI.sel).name)}` : ''})</span>
-      <ul>${G.neutrals.filter(n => n.kind === 'n').map(n => `<li class="${canPitch.has(n.id) ? 'near' : ''}"><span class="dot" style="background:${leanFill(n)};border-color:${n.amt && n.for !== NONE ? (n.for === P ? YOU : THEM) : INK}"></span><b>${esc(n.name)}</b>, ${ROLE_NAME[n.role]}, wants ${TASTE_GLYPH[n.taste]} ${TASTE[n.taste]}${n.amt ? `; <span style="color:${n.for === P ? YOU : THEM}">warming to ${n.for === P ? 'you' : 'them'} (${n.amt} of ${A.JOIN_AT})</span>` : ''}${canPitch.has(n.id) ? ' <span class="reach">in reach</span>' : ''}</li>`).join('') || '<li class="who">Nobody left to win over.</li>'}</ul></div>
-    <div class="cons"><b>Worth going for</b> <span class="who">(a quality 3 slide is worth three desk cards)</span><ul>
+    <details class="cons fold" data-f="undecided" ${UI.fold.undecided ? 'open' : ''}><summary><b>Undecided on the floor</b> <span class="who">(${G.neutrals.filter(n => n.kind === 'n').length}; two pitches each${canPitch.size ? `, ${canPitch.size} within reach of ${esc(G.byId(UI.sel).name)}` : ''})</span></summary>
+      <ul>${G.neutrals.filter(n => n.kind === 'n').map(n => `<li class="${canPitch.has(n.id) ? 'near' : ''}"><span class="dot" style="background:${leanFill(n)};border-color:${n.amt && n.for !== NONE ? (n.for === P ? YOU : THEM) : INK}"></span><b>${esc(n.name)}</b>, ${ROLE_NAME[n.role]}, wants ${TASTE_GLYPH[n.taste]} ${TASTE[n.taste]}${n.amt ? `; <span style="color:${n.for === P ? YOU : THEM}">warming to ${n.for === P ? 'you' : 'them'} (${n.amt} of ${A.JOIN_AT})</span>` : ''}${canPitch.has(n.id) ? ' <span class="reach">in reach</span>' : ''}</li>`).join('') || '<li class="who">Nobody left to win over.</li>'}</ul></details>
+    <details class="cons fold" data-f="loot" ${UI.fold.loot ? 'open' : ''}><summary><b>Worth going for</b> <span class="who">(a quality 3 slide is worth three desk cards)</span></summary><ul>
       ${Object.keys(G.closets).map(k => { const [x, y] = k.split(',').map(Number); const mine = !G.raidable(P, x); return `<li><b>${mine ? 'Your' : 'Their'} closet</b>${mine ? ' (only they can raid it)' : ''}: ${G.closets[k].map(c => `${TASTE_GLYPH[c.taste]} ${esc(c.name)} q${c.q}`).join(', ')}</li>`; }).join('')}
       ${Object.keys(G.loot).map(k => `<li><b>On the floor</b>: ${G.loot[k].map(c => `${TASTE_GLYPH[c.taste]} ${esc(c.name)} q${c.q}`).join(', ')}</li>`).join('')}
-      ${Object.keys(G.closets).length + Object.keys(G.loot).length ? '' : '<li class="who">Nothing left lying about.</li>'}</ul></div>
-    <div class="cons"><b>In the Lobby</b> <span class="who">(consultants take three pitches; contractors sign on one)</span><ul>${G.neutrals.filter(n => n.kind !== 'n').map(n => `<li class="${canPitch.has(n.id) ? 'near' : ''}"><span class="dot" style="background:${n.kind === 'consultant' ? leanFill(n) : '#fffdf6'};border-color:${n.kind === 'consultant' && n.amt && n.for !== NONE ? (n.for === P ? YOU : THEM) : INK}"></span><b>${esc(n.name)}</b>${n.kind === 'consultant' ? (n.side === P ? ', <b>consulting for you</b>' : n.side === N ? `, <span style="color:${THEM}">consulting for them</span>` : n.amt ? `, warming to ${n.for === P ? 'you' : 'them'} (${n.amt} of 3)` : ', uncommitted') : ', contractor, waiting'}. <span class="who">${esc(n.what)}.</span>${canPitch.has(n.id) ? ' <span class="reach">in reach</span>' : ''}</li>`).join('')}</ul></div>`;
+      ${Object.keys(G.closets).length + Object.keys(G.loot).length ? '' : '<li class="who">Nothing left lying about.</li>'}</ul></details>
+    <details class="cons fold" data-f="lobby" ${UI.fold.lobby ? 'open' : ''}><summary><b>In the Lobby</b> <span class="who">(consultants take three pitches; contractors sign on one)</span></summary><ul>${G.neutrals.filter(n => n.kind !== 'n').map(n => `<li class="${canPitch.has(n.id) ? 'near' : ''}"><span class="dot" style="background:${n.kind === 'consultant' ? leanFill(n) : '#fffdf6'};border-color:${n.kind === 'consultant' && n.amt && n.for !== NONE ? (n.for === P ? YOU : THEM) : INK}"></span><b>${esc(n.name)}</b>${n.kind === 'consultant' ? (n.side === P ? ', <b>consulting for you</b>' : n.side === N ? `, <span style="color:${THEM}">consulting for them</span>` : n.amt ? `, warming to ${n.for === P ? 'you' : 'them'} (${n.amt} of 3)` : ', uncommitted') : ', contractor, waiting'}. <span class="who">${esc(n.what)}.</span>${canPitch.has(n.id) ? ' <span class="reach">in reach</span>' : ''}</li>`).join('')}</ul></details>`;
+  $('#status').querySelectorAll('details.fold').forEach(d => d.ontoggle = () => { UI.fold[d.dataset.f] = d.open; });
   renderUnit();
   renderRoster();
   const log = G.log.slice(-60).reverse();
@@ -1355,7 +1386,7 @@ function renderUnit() {
     if (u.acted) h += `<p class="waiting">${u.moved ? 'Done for this turn.' : 'Coffee in hand: click a pink tile to keep walking.'}</p>`;
     else {
       acts = G.actions(u);
-      if (!u.moved) h += `<p class="who">Click a pink tile to move, or act from here.</p>`;
+      if (!u.moved) h += `<p class="who">${PHONE ? 'Tap' : 'Click'} a pink tile to move, or act from here.</p>`;
       h += `<div class="cards">${acts.map((o, i) => `<button class="mv ${o.kind === 'confront' ? 'attack' : ''} ${['rig', 'pickpocket'].includes(o.kind) ? 'trick' : ''}" data-i="${i}"><span class="l">${esc(o.label)}</span><span class="st"></span><span class="s">${esc(o.sub)}</span></button>`).join('')}</div>`;
     }
     h += `<div class="ctl">${u.from && !u.acted ? '<button class="btn alt" id="undo">Undo move</button>' : ''}${endTurnButton()}</div>`;
