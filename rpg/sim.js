@@ -20,8 +20,8 @@ let w = 0, t = 0, l = 0, routs = 0, turns = 0, breaks = 0, crowd = 0, err = 0, h
       if (r.winner === P) w++; else if (r.winner === N) l++; else t++;
       if (r.how === 'rout') routs++;
       turns += g.turn; breaks += r.breaks[0] + r.breaks[1]; crowd += r.crowd[0] + r.crowd[1];
-      hires += g.consultants.filter(c => c.side !== -1).length;
-      if (process.env.V) console.log(i, r.how, 'winner', r.winner, 'scores', JSON.stringify(r.scores), 'breaks', r.breaks, 'crowd', r.crowd, 'turn', g.turn, 'budget', g.budget);
+      hires += r.consultants;
+      if (process.env.V) console.log(i, r.how, 'winner', r.winner, 'scores', JSON.stringify(r.scores), 'breaks', r.breaks, 'crowd', r.crowd, 'turn', g.turn);
     } catch (e) { err++; console.error(e); }
   }
   console.log(`${policy} party=${party}: ${w}W ${t}T ${l}L  routs ${routs}  breaks/match ${(breaks / M).toFixed(1)}  crowd/match ${(crowd / M).toFixed(1)}  consultants hired/match ${(hires / M).toFixed(1)}  errors ${err}`);

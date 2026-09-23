@@ -24,9 +24,9 @@ for two turns, coming back at 2 morale. From turn 4, holding still costs a point
 turns are **all hands**: anyone broken stays broken, and when time is called every undecided neutral goes
 with whichever party has more people standing beside them. All of one side's staff broken at once is a rout.
 
-Money is $3 a turn and does not carry over, plus $2 a break and $1 a recruit. **Contractors** (Runner,
-Heavy; $3) leave after two turns. **Consultants** come down $1 each turn nobody buys them, and can be
-poached for $2 more than the buyer paid.
+There is no money. Followers are what you win, and what fills the room at your talk. **Consultants** and
+**contractors** wait in the Lobby and are won by pitching like anyone else: a consultant takes three pitches and
+can be pitched back off you; a contractor signs on one and joins your party for two turns, then returns.
 
 The **final talk**: each leader picks three slides without seeing the other's, and they are shown in turns.
 A slide of the same taste as the one the room just saw scores nothing. Otherwise a slide scores
@@ -39,6 +39,6 @@ boo, and there is one heckle to answer.
 - `rpg/engine.js` holds the rules and the planner: plain JS, no DOM. `rpg/page.html` is the board and
   panels, `rpg/style.css` the shared look. `cd rpg && python3 build.py ../index.html` inlines all three.
 - `rpg/sim.js` is the harness: `POLICY=greedy|random MATCHES=n PARTY=k node rpg/sim.js`. The greedy
-  player uses the same planner as the nemesis. Last run: greedy 47W 1T 52L over 100, random 0W 40L,
-  about 4.7 breaks a match.
+  player uses the same planner as the nemesis. Last run: greedy 45W 0T 55L over 100, random 0W 40L,
+  about 4 breaks a match.
 - `board.html` is the earlier board-game version, built from `board/` by `board/build.sh`.

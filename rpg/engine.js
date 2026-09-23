@@ -22,26 +22,30 @@ const ABILITY = [
   { name: 'Jam', what: 'an enemy within 4 drops a card and their ability goes on cooldown' },
   { name: 'Counsel', what: 'an ally within 2, or yourself, regains 6 morale' },
   { name: 'Rumour', what: 'every enemy within 2 tiles loses 3 morale' },
-  { name: 'Pitch', what: 'a neutral within 3 warms to you by 2' },
+  { name: 'Pitch', what: 'somebody undecided within 3 tiles warms to you by 2' },
   { name: 'Injunction', what: 'an enemy within 4 cannot move on their next turn' },
   { name: 'Fetch', what: 'take a card from any desk within 6 tiles' },
 ];
+// Consultants stand in the Lobby. Three pitches and they work for you; the other side can pitch them back.
 const CONSULTANTS = [
-  { id: 'data', name: 'The Data Whisperer', price: 6, what: 'Data slides land half again as hard at the final talk' },
-  { id: 'spin', name: 'Spin Doctor', price: 6, what: '+1 damage on every argument you start' },
-  { id: 'agile', name: 'Agile Coach', price: 7, what: '+1 move for all your units' },
-  { id: 'pr', name: 'Crisis PR', price: 5, what: 'your demoralised come back after 1 turn, not 2' },
-  { id: 'hunt', name: 'Headhunter', price: 6, what: 'every pitch warms one more' },
-  { id: 'keynote', name: 'Keynote Coach', price: 6, what: '+3 claps a slide at the final talk' },
+  { id: 'data', name: 'The Data Whisperer', what: 'Data slides land half again as hard at the final talk' },
+  { id: 'spin', name: 'Spin Doctor', what: '+1 damage on every argument you start' },
+  { id: 'agile', name: 'Agile Coach', what: '+1 move for all your units' },
+  { id: 'pr', name: 'Crisis PR', what: 'your demoralised come back after 1 turn, not 2' },
+  { id: 'hunt', name: 'Headhunter', what: 'every pitch warms one more' },
+  { id: 'keynote', name: 'Keynote Coach', what: '+3 claps a slide at the final talk' },
 ];
+// Contractors stand in the Lobby too. One pitch and they join your party for two turns, then go back to waiting.
 const CONTRACTORS = [
-  { id: 'runner', name: 'Runner', stats: [0, 1, 5, 1], morale: 6, price: 3, what: 'fast legs, weak argument; fetches loot' },
-  { id: 'heavy', name: 'Heavy', stats: [3, 0, 1, 3], morale: 10, price: 3, what: 'slow, loud, hard to shout down; blocks a door' },
+  { id: 'runner', name: 'Runner', stats: [0, 1, 5, 1], morale: 6, what: 'fast legs, weak argument; fetches loot' },
+  { id: 'heavy', name: 'Heavy', stats: [3, 0, 1, 3], morale: 10, what: 'slow, loud, hard to shout down; blocks a door' },
 ];
+const CONSULT_AT = 3;
+const LOBBY_SPOTS = [[10, 10], [8, 11], [12, 11], [9, 10], [11, 10]];
 const P = 0, N = 1, NONE = -1;
 const A = {
   TURNS: 8, W: 21, H: 13, SULK: 2, CD: 3, CARRY: 4, SLIDES: 3, JOIN_AT: 2, DESK_STOCK: 2,
-  TURN_BUDGET: 3, CONTRACT_TURNS: 2, MAX_CONTRACTORS: 2, FREE_POINTS: 4, STAT_MAX: 5, DUD: 'a blank slide',
+  CONTRACT_TURNS: 2, FREE_POINTS: 4, STAT_MAX: 5, DUD: 'a blank slide',
   HEAVY_LOAD: 3, HOLD_COST_FROM: 4, FUSE: 2,
 };
 const NAMES = ['Ada', 'Bram', 'Cleo', 'Dev', 'Esme', 'Finn', 'Gus', 'Hana', 'Ines', 'Jo', 'Kit', 'Lars', 'Mina', 'Ned',
@@ -103,16 +107,12 @@ class Game {
     this.rng = mulberry32(this.seed);
     this.map = buildMap();
     this.units = []; this.neutrals = []; this.loot = {}; this.stock = {}; this.nextId = 1; this.used = new Set();
-    this.budget = { 0: 0, 1: 0 };
     this.crowd = { 0: [], 1: [] };
     this.bank = { 0: [], 1: [] };
     this.rigged = { 0: false, 1: false };
     this.breaks = { 0: 0, 1: 0 };
     this.turn = 1; this.side = P; this.first = N; this.log = []; this.over = false; this.winner = NONE; this.how = '';
     for (let y = 0; y < A.H; y++) for (let x = 0; x < A.W; x++) if (DESKS[this.map[y][x]] !== undefined) this.stock[key(x, y)] = A.DESK_STOCK;
-    const pool = CONSULTANTS.slice();
-    for (let i = pool.length - 1; i > 0; i--) { const j = this.ri(i + 1); [pool[i], pool[j]] = [pool[j], pool[i]]; }
-    this.consultants = pool.slice(0, 3).map(c => ({ ...c, side: NONE, loyalty: 0, drift: 0 }));
   }
   r() { return this.rng(); }
   ri(n) { return Math.floor(this.rng() * n); }
@@ -123,7 +123,8 @@ class Game {
     for (let i = 0; i < 50; i++) { const n = this.pick(NAMES); if (!this.used.has(n)) { this.used.add(n); return n; } }
     return 'Temp ' + this.nextId;
   }
-  has(side, id) { return this.consultants.some(c => c.id === id && c.side === side); }
+  has(side, id) { return this.neutrals.some(n => n.kind === 'consultant' && n.cid === id && n.side === side); }
+  consultants() { return this.neutrals.filter(n => n.kind === 'consultant'); }
   tile(x, y) { return x < 0 || y < 0 || x >= A.W || y >= A.H ? '#' : this.map[y][x]; }
   active(side) { return this.units.filter(u => u.side === side && u.sulk === 0 && !u.gone); }
   unitAt(x, y) { return this.units.find(u => u.x === x && u.y === y && u.sulk === 0 && !u.gone); }
@@ -187,10 +188,32 @@ class Game {
     for (const [x, y] of SPAWN_N) {
       for (const xx of [x, A.W - 1 - x]) {
         const role = this.pick([0, 1, 2, 3, 4, 5, 6, 7, 7, 7, 8, 8]);
-        this.neutrals.push({ id: this.nextId++, name: this.name(), role, taste: this.pick(ROLE_TASTES[role]), x: xx, y, amt: 0, for: NONE });
+        this.neutrals.push({ id: this.nextId++, kind: 'n', name: this.name(), role, taste: this.pick(ROLE_TASTES[role]), x: xx, y, amt: 0, for: NONE });
       }
     }
+    // The hired help waits in the Lobby: three consultants and two contractors.
+    const pool = CONSULTANTS.slice();
+    for (let i = pool.length - 1; i > 0; i--) { const j = this.ri(i + 1); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+    let spot = 0;
+    for (const c of pool.slice(0, 3)) {
+      const [x, y] = LOBBY_SPOTS[spot++];
+      this.neutrals.push({ id: this.nextId++, kind: 'consultant', cid: c.id, name: c.name, what: c.what, role: RO.STAFF, taste: this.ri(4), x, y, amt: 0, for: NONE, side: NONE });
+    }
+    for (const c of CONTRACTORS) this.addContractorNpc(c, LOBBY_SPOTS[spot++]);
     this.startTurn(this.first);
+  }
+  addContractorNpc(c, at) {
+    const [sx, sy] = at || this.lobby();
+    const n = { id: this.nextId++, kind: 'contractor', cid: c.id, name: c.name, what: c.what, role: RO.STAFF, taste: this.ri(4), x: -1, y: -1, amt: 0, for: NONE };
+    const seen = new Set([key(sx, sy)]);
+    const q = [[sx, sy]];
+    while (q.length) {
+      const [x, y] = q.shift();
+      if (this.free(x, y) && this.tile(x, y) !== 'L') { n.x = x; n.y = y; break; }
+      for (const [dx, dy] of DIRS) { const nx = x + dx, ny = y + dy, k = key(nx, ny); if (!seen.has(k) && this.tile(nx, ny) !== '#') { seen.add(k); q.push([nx, ny]); } }
+    }
+    if (n.x >= 0) this.neutrals.push(n);
+    return n;
   }
 
   // --- movement ---
@@ -270,7 +293,8 @@ class Game {
   raidable(side, x) { return side === P ? x > Math.floor(A.W / 2) : x < Math.floor(A.W / 2); }
   onHome(u) { return this.tile(u.x, u.y) === (u.side === P ? 'a' : 'b'); }
   pitchAmt(u, base = 1) { return base + (u.stats[0] >= 3 ? 1 : 0) + (this.has(u.side, 'hunt') ? 1 : 0); }
-  wouldJoin(n, side, amt) { const r = warmRule(n.amt, n.for, amt, side); return r[1] === side && r[0] >= A.JOIN_AT; }
+  joinAt(n) { return n.kind === 'consultant' ? CONSULT_AT : n.kind === 'contractor' ? 1 : A.JOIN_AT; }
+  wouldJoin(n, side, amt) { const r = warmRule(n.amt, n.for, amt, side); return r[1] === side && r[0] >= this.joinAt(n); }
 
   actions(u) {
     const out = [];
@@ -294,27 +318,18 @@ class Game {
       const n = this.neutralAt(x, y);
       if (n) {
         const amt = this.pitchAmt(u);
-        out.push({ kind: 'pitch', target: n.id, x, y, label: `Pitch ${n.name}`,
-          sub: `${ROLE_NAME[n.role]}, wants ${TASTE[n.taste]}; ${this.wouldJoin(n, u.side, amt) ? 'joins your crowd' : `warms by ${amt}`}` });
+        if (n.kind === 'consultant') {
+          if (n.side !== u.side) out.push({ kind: 'pitch', target: n.id, x, y, label: `${n.side === other ? 'Poach' : 'Woo'} ${n.name}`,
+            sub: `consultant: ${n.what}; ${this.wouldJoin(n, u.side, amt) ? 'comes over to you' : `warms by ${amt} of ${CONSULT_AT}`}` });
+        } else if (n.kind === 'contractor') {
+          out.push({ kind: 'pitch', target: n.id, x, y, label: `Sign the ${n.name}`, sub: `${n.what}; joins your party for ${A.CONTRACT_TURNS} turns` });
+        } else {
+          out.push({ kind: 'pitch', target: n.id, x, y, label: `Pitch ${n.name}`,
+            sub: `${ROLE_NAME[n.role]}, wants ${TASTE[n.taste]}; ${this.wouldJoin(n, u.side, amt) ? 'becomes your follower' : `warms by ${amt}`}` });
+        }
       }
     }
     if (u.cd === 0 && u.job >= 0 && u.kind === 'staff') for (const a of this.abilityTargets(u)) out.push(a);
-    const onL = this.tile(u.x, u.y) === 'L' || near.some(([x, y]) => this.tile(x, y) === 'L');
-    if (onL) {
-      const mine = this.units.filter(v => v.side === u.side && v.kind === 'contractor' && !v.gone).length;
-      for (const c of CONTRACTORS) {
-        if (this.budget[u.side] >= c.price && mine < A.MAX_CONTRACTORS && this.turn < A.TURNS) {
-          out.push({ kind: 'contract', id: c.id, label: `Hire a ${c.name}, $${c.price}`, sub: `${c.what}; gone after ${A.CONTRACT_TURNS} turns` });
-        }
-      }
-      for (const c of this.consultants) {
-        if (c.side === u.side) continue;
-        const price = c.side === NONE ? Math.max(2, c.price - c.drift) : c.loyalty + 2;
-        if (this.budget[u.side] >= price) {
-          out.push({ kind: 'consult', id: c.id, price, label: `${c.side === NONE ? 'Retain' : 'Poach'} ${c.name}, $${price}`, sub: c.what + (c.side === other ? '; they paid ' + c.loyalty : '') });
-        }
-      }
-    }
     if (this.onHome(u) && u.cards.length) out.push({ kind: 'bank', label: `Bank ${u.cards.length} card${u.cards.length === 1 ? '' : 's'}`, sub: 'left in your office: safe from pickpockets and drops, and still yours at the talk' });
     if (this.tile(u.x, u.y) === 'R') {
       if (!this.rigged[other] && this.turn < A.TURNS) out.push({ kind: 'rig', label: 'Rig their projector', sub: 'their best slide comes up blank at the final talk, unless they check it' });
@@ -351,9 +366,9 @@ class Game {
         break;
       }
       case RO.SALES:
-        for (const n of this.neutrals.filter(n => man(u.x, u.y, n.x, n.y) <= 3)) {
+        for (const n of this.neutrals.filter(n => man(u.x, u.y, n.x, n.y) <= 3 && n.kind !== 'contractor' && !(n.kind === 'consultant' && n.side === u.side))) {
           const amt = this.pitchAmt(u, 2);
-          out.push({ ...base, target: n.id, x: n.x, y: n.y, label: `${ab.name} ${n.name}`, sub: this.wouldJoin(n, u.side, amt) ? 'joins your crowd' : `warms by ${amt}` });
+          out.push({ ...base, target: n.id, x: n.x, y: n.y, label: `${ab.name} ${n.name}`, sub: this.wouldJoin(n, u.side, amt) ? (n.kind === 'consultant' ? 'comes over to you' : 'becomes your follower') : `warms by ${amt}` });
         }
         break;
       case RO.LEGAL:
@@ -412,24 +427,6 @@ class Game {
       }
       case 'pitch': this.pitch(u, t, this.pitchAmt(u)); break;
       case 'ability': this.useAbility(u, a, t); break;
-      case 'contract': {
-        const c = CONTRACTORS.find(c => c.id === a.id);
-        this.budget[u.side] -= c.price;
-        const v = this.mkUnit(u.side, -1, c.stats, false, 'contractor', { name: `${c.name} ${this.nextId}`, morale: c.morale, expires: this.turn + A.CONTRACT_TURNS });
-        const [lx, ly] = this.lobby();
-        this.placeNear(v, lx, ly);
-        v.moved = v.acted = true;
-        this.say(u.side, `${u.name} hired a ${c.name} for $${c.price}.`);
-        break;
-      }
-      case 'consult': {
-        const c = this.consultants.find(c => c.id === a.id);
-        const was = c.side;
-        this.budget[u.side] -= a.price;
-        c.side = u.side; c.loyalty = a.price;
-        this.say(u.side, was === NONE ? `${u.name} retained ${c.name} for $${a.price}.` : `${u.name} poached ${c.name} for $${a.price}.`);
-        break;
-      }
       case 'bank': this.bank[u.side].push(...u.cards); this.say(u.side, `${u.name} banked ${u.cards.length} card${u.cards.length === 1 ? '' : 's'} in the office.`); u.cards = []; break;
       case 'wait': if (this.turn >= A.HOLD_COST_FROM && u.morale > 1) u.morale--; break;
       case 'rig': this.rigged[other] = true; this.say(u.side, u.side === P ? 'You rigged their projector.' : 'Somebody has been at your projector.'); break;
@@ -449,12 +446,29 @@ class Game {
   pitch(u, n, amt) {
     const r = warmRule(n.amt, n.for, amt, u.side);
     n.amt = r[0]; n.for = r[1];
-    if (n.for === u.side && n.amt >= A.JOIN_AT) {
+    const mine = u.side === P ? 'your' : 'their';
+    if (n.kind === 'contractor') {
+      const c = CONTRACTORS.find(c => c.id === n.cid);
       this.neutrals = this.neutrals.filter(x => x !== n);
-      this.crowd[u.side].push(n);
-      this.budget[u.side] += 1;
-      this.say(u.side, `${n.name} (${ROLE_NAME[n.role]}, ${TASTE[n.taste]}) joined ${u.side === P ? 'your' : 'their'} crowd.`);
-    } else this.say(u.side, `${u.name} pitched ${n.name}.`);
+      const v = this.mkUnit(u.side, -1, c.stats, false, 'contractor', { name: c.name, morale: c.morale, expires: this.turn + A.CONTRACT_TURNS });
+      v.cid = c.id;
+      this.placeNear(v, n.x, n.y);
+      v.moved = v.acted = true;
+      this.say(u.side, `${u.name} signed the ${c.name} for ${mine} party.`);
+      return;
+    }
+    if (n.for === u.side && n.amt >= this.joinAt(n)) {
+      if (n.kind === 'consultant') {
+        if (n.side === u.side) return;
+        const was = n.side;
+        n.side = u.side; n.amt = CONSULT_AT;
+        this.say(u.side, was === NONE ? `${n.name} now consults for ${mine} side.` : `${n.name} was poached: now consulting for ${mine} side.`);
+      } else {
+        this.neutrals = this.neutrals.filter(x => x !== n);
+        this.crowd[u.side].push(n);
+        this.say(u.side, `${n.name} (${ROLE_NAME[n.role]}, ${TASTE[n.taste]}) is now ${mine} follower.`);
+      }
+    } else this.say(u.side, `${u.name} pitched ${n.name}${n.kind === 'consultant' ? ` (${n.amt} of ${CONSULT_AT})` : ''}.`);
   }
   useAbility(u, a, t) {
     u.cd = A.CD;
@@ -489,7 +503,6 @@ class Game {
     const dropped = t.cards.length;
     t.cards = [];
     this.breaks[bySide]++;
-    this.budget[bySide] += 2;
     if (t.kind === 'contractor') { t.gone = true; this.say(t.side, `${t.name} quit on the spot${dropped ? ', dropping ' + dropped + ' cards' : ''}.`); }
     else {
       t.sulk = this.fuse() ? 99 : this.has(t.side, 'pr') ? 1 : A.SULK;
@@ -511,8 +524,6 @@ class Game {
   // --- turns ---
   startTurn(side) {
     this.side = side;
-    this.budget[side] = A.TURN_BUDGET;
-    for (const c of this.consultants) if (c.side === NONE && side === this.first && this.turn > 1) c.drift++;
     for (const u of this.units.filter(u => u.side === side && !u.gone)) {
       u.moved = false; u.acted = false; u.from = null; u.bonus = 0;
       if (u.cd > 0) u.cd--;
@@ -520,8 +531,9 @@ class Game {
         u.gone = true;
         if (u.cards.length) (this.loot[key(u.x, u.y)] ||= []).push(...u.cards);
         u.cards = [];
-        this.say(side, `${u.name}'s contract is up. They left${u.x >= 0 ? ' their cards on the floor' : ''}.`);
+        this.say(side, `The ${u.name}'s two turns are up. Back to the Lobby${u.x >= 0 ? ', cards left on the floor' : ''}.`);
         u.x = u.y = -1;
+        this.addContractorNpc(CONTRACTORS.find(c => c.id === u.cid));
         continue;
       }
       if (u.sulk > 0) {
@@ -539,9 +551,11 @@ class Game {
   endTurn() {
     for (const u of this.units) if (u.side === this.side && u.rooted > 0 && u.moved) u.rooted--;
     for (const u of this.units) if (u.side === this.side && u.rooted > 0 && !u.moved) u.rooted = 0;
-    if (this.side !== this.first) this.turn++;
+    // Whoever opened this turn closes the next: the first-come hires and loot are not always theirs.
+    const second = this.side !== this.first;
+    if (second) { this.turn++; this.first = this.other(this.first); }
     if (this.turn > A.TURNS) return false;
-    this.startTurn(this.other(this.side));
+    this.startTurn(second ? this.first : this.other(this.side));
     return true;
   }
 
@@ -554,10 +568,12 @@ class Game {
     for (const k in this.stock) if (this.stock[k] > 0 && room) { const [x, y] = k.split(',').map(Number); goals.push([x, y, 2 + 0.3 * demand[DESKS[this.tile(x, y)]]]); }
     for (let y = 0; y < A.H; y++) for (let x = 0; x < A.W; x++) if (this.map[y][x] === 'C' && room && this.raidable(u.side, x)) goals.push([x, y, 6]);
     for (const k in this.loot) { const [x, y] = k.split(',').map(Number); goals.push([x, y, 2.5 * this.loot[k].length]); }
-    for (const n of this.neutrals) goals.push([n.x, n.y, 2.2 + (n.for === other ? 0.6 : 0)]);
+    for (const n of this.neutrals) {
+      if (n.kind === 'consultant') { if (n.side !== u.side) goals.push([n.x, n.y, 3.2 + (n.side === other ? 0.8 : 0)]); }
+      else if (n.kind === 'contractor') { if (this.turn <= A.TURNS - 2) goals.push([n.x, n.y, 3]); }
+      else goals.push([n.x, n.y, 2.2 + (n.for === other ? 0.6 : 0)]);
+    }
     for (const e of this.active(other)) goals.push([e.x, e.y, (u.stats[0] >= 2 ? 4.5 : 2.5) + 4 * (1 - e.morale / e.max) + e.cards.length * 1.2 + (e.leader ? 1 : 0)]);
-    const [lx, ly] = this.lobby();
-    if (this.budget[u.side] >= 3 && this.turn < A.TURNS) goals.push([lx, ly, 2.5]);
     if (u.cards.length >= 2) for (const [x, y] of this.spawnTiles(u.side)) goals.push([x, y, 1.2 * u.cards.length]);
     if (!this.rigged[other] && this.turn >= 3 && this.turn < A.TURNS) for (let y = 0; y < A.H; y++) for (let x = 0; x < A.W; x++) if (this.map[y][x] === 'R') goals.push([x, y, 2]);
     if (this.rigged[u.side]) for (let y = 0; y < A.H; y++) for (let x = 0; x < A.W; x++) if (this.map[y][x] === 'R') goals.push([x, y, 4]);
@@ -603,7 +619,10 @@ class Game {
       case 'pickpocket': return this.pickChance(u) * 3 * (u.cards.length < A.CARRY ? 1 : 0);
       case 'desk': return 2 + 0.3 * this.demand(u.side)[a.taste];
       case 'closet': return 6;
-      case 'pitch': return 2 + (this.wouldJoin(t, u.side, this.pitchAmt(u)) ? 3 : 0) + (t.for === this.other(u.side) ? 0.5 : 0);
+      case 'pitch':
+        if (t.kind === 'contractor') return this.turn <= A.TURNS - 2 ? 3.6 : 0;
+        if (t.kind === 'consultant') return 2.5 + (this.wouldJoin(t, u.side, this.pitchAmt(u)) ? 3.5 : 0) + (t.side === this.other(u.side) ? 1 : 0);
+        return 2 + (this.wouldJoin(t, u.side, this.pitchAmt(u)) ? 3 : 0) + (t.for === this.other(u.side) ? 0.5 : 0);
       case 'ability':
         switch (u.job) {
           case RO.CEO: return this.active(u.side).filter(v => v !== u && !v.moved && man(u.x, u.y, v.x, v.y) <= 3).length * 1.2;
@@ -611,13 +630,11 @@ class Game {
           case RO.IT: return 1 + (t.cd === 0 ? 1.5 : 0) + (t.cards.length ? 2.5 : 0);
           case RO.HR: return Math.min(6, t.max - t.morale) * 0.8 + (t.leader ? 1 : 0);
           case RO.MKT: return this.active(this.other(u.side)).filter(e => man(u.x, u.y, e.x, e.y) <= 2).reduce((s, e) => s + (e.morale <= 3 ? 8 : 3), 0);
-          case RO.SALES: return 2.5 + (this.wouldJoin(t, u.side, this.pitchAmt(u, 2)) ? 3 : 0);
+          case RO.SALES: return t.kind === 'contractor' ? 1 : 2.5 + (this.wouldJoin(t, u.side, this.pitchAmt(u, 2)) ? 3 : 0);
           case RO.LEGAL: return 1.5 + (this.danger(t, t.x, t.y) > 0 ? 1.5 : 0);
           case RO.INTERN: return 3;
         }
         return 0;
-      case 'contract': return this.turn <= A.TURNS - 2 ? 4.6 : 0;
-      case 'consult': return this.turn <= A.TURNS - 1 ? 5 : 0;
       case 'bank': return u.cards.length * (this.danger(u, u.x, u.y) > 0 ? 1.4 : 0.8) + (u.cards.length >= A.HEAVY_LOAD ? 1 : 0);
       case 'rig': return this.turn >= 2 ? 3.5 : 1;
       case 'check': return 5;
@@ -675,6 +692,7 @@ class Game {
   // All hands: whoever is still undecided goes with whichever party has more people standing next to them.
   allHands() {
     for (const n of this.neutrals.slice()) {
+      if (n.kind !== 'n') continue;
       const near = { 0: 0, 1: 0 };
       for (const [x, y] of this.adj(n.x, n.y)) { const u = this.unitAt(x, y); if (u) near[u.side]++; }
       const side = near[0] > near[1] ? P : near[1] > near[0] ? N : NONE;
@@ -805,7 +823,7 @@ class Game {
       await H('talkEnd', T);
     }
     await H('matchEnd');
-    return { winner: this.winner, how: this.how, scores: this.scores, breaks: this.breaks, crowd: [this.crowd[P].length, this.crowd[N].length] };
+    return { winner: this.winner, how: this.how, scores: this.scores, breaks: this.breaks, crowd: [this.crowd[P].length, this.crowd[N].length], consultants: this.consultants().filter(n => n.side !== NONE).length };
   }
 }
 if (typeof module !== 'undefined') module.exports = { Game, A, P, N, NONE, RO, PLAYABLE, ROLE_STATS, buildMap };
