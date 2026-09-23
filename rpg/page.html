@@ -124,6 +124,8 @@ const LABELS = [[3, 4, 'Your office'], [17, 4, 'Their office'], [12, 1, 'The Roc
 let G = null;
 const UI = { turn: null, sel: null, hover: null, plan: null, seen: 0 };
 const PHONE = matchMedia('(max-width: 1000px)').matches;
+// On touch screens a hover handler that changes the screen makes Safari swallow the tap. Only hover where there is a mouse.
+const CAN_HOVER = matchMedia('(hover: hover)').matches;
 UI.fold = { undecided: !PHONE, loot: !PHONE, lobby: !PHONE };
 if (!PHONE) document.getElementById('keybox').open = true;
 const cx = x => OX + x * CS + CS / 2, cy = y => OY + y * CS + CS / 2;
@@ -178,7 +180,7 @@ function drawBoard() {
     if (t === 'a' || t === 'b') s += `<rect x="${X}" y="${Y}" width="${CS}" height="${CS}" fill="${t === 'a' ? YOU : THEM}" opacity=".08"/>`;
     if (t === 'R') s += `<rect x="${X + 1}" y="${Y + 1}" width="${CS - 2}" height="${CS - 2}" fill="#e6dcae"/>${ICON.rock(X, Y)}`;
     if (t === 'L') s += ICON.lobby(X, Y);
-    if (reach[key(x, y)] !== undefined) s += `<rect x="${X + 2}" y="${Y + 2}" width="${CS - 4}" height="${CS - 4}" fill="${HI}" opacity=".45" class="tile" data-x="${x}" data-y="${y}"/>`;
+    if (reach[key(x, y)] !== undefined) s += `<rect x="${X + 2}" y="${Y + 2}" width="${CS - 4}" height="${CS - 4}" fill="${HI}" opacity=".45"/>`;
   }
   // walls, as one inked path
   let wp = '';
@@ -232,6 +234,11 @@ function drawBoard() {
     if (n.kind === 'n') s += `<text class="hand" x="${X}" y="${Y + 31}" text-anchor="middle" font-size="14" fill="${INK}" opacity=".85">${esc(n.name)}</text>`;
     s += `</g>`;
   }
+  // Where you can move, as a click layer above the labels, loot and paths, so nothing drawn there eats the click.
+  for (const k in reach) {
+    const [x, y] = k.split(',').map(Number);
+    s += `<rect class="tile" data-x="${x}" data-y="${y}" x="${OX + x * CS}" y="${OY + y * CS}" width="${CS}" height="${CS}" fill="#000" fill-opacity="0" style="cursor:pointer"/>`;
+  }
   // units
   for (const u of G.units) {
     if (u.sulk || u.gone || u.x < 0) continue;
@@ -276,7 +283,9 @@ function drawBoard() {
   svg.querySelectorAll('.tile').forEach(el => el.addEventListener('click', () => {
     if (!UI.turn || !sel) return;
     G.moveUnit(sel, +el.dataset.x, +el.dataset.y);
+    if (finished(sel)) nextUnit();
     render();
+    afterStep();
   }));
   svg.querySelectorAll('.unit').forEach(el => el.addEventListener('click', e => {
     e.stopPropagation();
@@ -374,10 +383,10 @@ function renderUnit() {
     <div class="chips">${u.cards.length ? u.cards.map(c => `<span class="chip">${TASTE_GLYPH[c.taste]} ${esc(c.name)} <small>q${c.q}</small></span>`).join('') : '<span class="who">No cards.</span>'}</div></div>`;
   let acts = [];
   if (UI.turn && mine) {
-    if (u.acted) h += `<p class="waiting">${u.moved ? 'Done for this turn.' : `Coffee in hand: ${PHONE ? 'tap' : 'click'} a pink tile to keep walking.`}</p>`;
+    if (u.acted) h += `<p class="waiting">${u.moved || stuck(u) ? 'Done for this turn.' : `Action done. You can still move: ${PHONE ? 'tap' : 'click'} a pink tile, or pick someone else.`}</p>`;
     else {
       acts = G.actions(u);
-      if (!u.moved) h += `<p class="who">${PHONE ? 'Tap' : 'Click'} a pink tile to move, or act from here.</p>`;
+      if (!u.moved) h += `<p class="who">Move and act, in either order: ${PHONE ? 'tap' : 'click'} a pink tile to move, or act from here first.</p>`;
       h += `<div class="cards">${acts.map((o, i) => `<button class="mv ${o.kind === 'confront' ? 'attack' : ''} ${['rig', 'pickpocket'].includes(o.kind) ? 'trick' : ''}" data-i="${i}"><span class="l">${esc(o.label)}</span><span class="st"></span><span class="s">${esc(o.sub)}</span></button>`).join('')}</div>`;
     }
     h += `<div class="ctl">${u.from && !u.acted ? '<button class="btn alt" id="undo">Undo move</button>' : ''}${endTurnButton()}</div>`;
@@ -386,9 +395,11 @@ function renderUnit() {
   card.querySelectorAll('.mv').forEach(btn => {
     const o = acts[+btn.dataset.i];
     btn.onclick = () => doAct(u, o);
-    const on = () => { UI.hover = o.x !== undefined ? { x: o.x, y: o.y } : null; drawBoard(); };
-    btn.onmouseenter = on; btn.onfocus = on;
-    btn.onmouseleave = () => { UI.hover = null; drawBoard(); };
+    if (CAN_HOVER) {
+      const on = () => { UI.hover = o.x !== undefined ? { x: o.x, y: o.y } : null; drawBoard(); };
+      btn.onmouseenter = on; btn.onfocus = on;
+      btn.onmouseleave = () => { UI.hover = null; drawBoard(); };
+    }
   });
   const un = $('#undo'); if (un) un.onclick = () => { G.undoMove(u); render(); };
   const e = $('#endturn'); if (e) e.onclick = endTurn;
@@ -407,10 +418,21 @@ function renderRoster() {
   $('#rostercard').querySelectorAll('.rrow').forEach(b => b.onclick = () => { UI.sel = +b.dataset.id; render(); });
 }
 
+// A unit is done when it has nothing left to choose: its action is used (or only Hold is left) and its move is used (or it cannot go anywhere).
+function stuck(u) { return Object.keys(G.reach(u).tiles).length <= 1; }
+function onlyHold(u) { return G.actions(u).every(a => a.kind === 'wait'); }
+function finished(u) { return (u.acted || onlyHold(u)) && (u.moved || stuck(u)); }
+function afterStep() {
+  if (G.over || !UI.turn) return;
+  if (G.active(P).every(finished)) {
+    const idle = G.active(P).filter(v => !v.acted);
+    UI.turn && banner(idle.length ? 'Nothing left to do' : 'Everyone has gone', 700).then(() => { if (!UI.turn) return; for (const v of idle) G.act(v, { kind: 'wait' }); finishTurn(); });
+  }
+}
 function nextUnit() {
   const cur = UI.sel ? G.byId(UI.sel) : null;
-  if (cur && cur.side === P && cur.acted && !cur.moved && !cur.sulk) return;
-  const next = G.active(P).find(v => !v.acted);
+  if (cur && cur.side === P && !cur.sulk && !finished(cur)) return;
+  const next = G.active(P).find(v => !v.acted && !finished(v));
   UI.sel = next ? next.id : null;
 }
 function doAct(u, o) {
@@ -418,11 +440,12 @@ function doAct(u, o) {
   G.act(u, o);
   if (!G.over) nextUnit();
   render();
+  afterStep();
   if (G.over && UI.turn) { const r = UI.turn; UI.turn = null; r(); }
 }
 function endTurn() {
   if (!UI.turn) return;
-  const left = G.active(P).filter(v => !v.acted);
+  const left = G.active(P).filter(v => !v.acted && !finished(v));
   if (left.length) {
     if (!$('#veil').hidden) return;
     sheet(`<h2>End the turn for all?</h2><p>${left.length === 1 ? `${esc(left[0].name)} has` : `${left.length} of yours have`} not gone yet: ${left.map(v => esc(v.name)).join(', ')}. ${left.some(v => G.holdCost(v)) ? `${left.filter(v => G.holdCost(v)).map(v => esc(v.name)).join(', ')} will lose a point of morale for holding.` : 'They will simply hold.'}</p>
@@ -434,7 +457,7 @@ function endTurn() {
 }
 function finishTurn() { const r = UI.turn; UI.turn = null; UI.sel = null; r(); }
 function endTurnButton() {
-  const left = G.active(P).filter(v => !v.acted).length;
+  const left = G.active(P).filter(v => !v.acted && !finished(v)).length;
   return `<button class="btn ${left ? 'alt' : ''}" id="endturn" title="${left ? left + ' still to go' : 'Everyone has gone'}">End turn for all${left ? ` (${left} left)` : ''}</button>`;
 }
 
@@ -573,7 +596,7 @@ function verdict() {
 const RULES = [
   ['How to start', `<p>Pick a job: it sets your starting stats, what you want to hear in a talk, and your ability. Spend four points on Charm, Guile, Hustle and Grit. Then choose up to four colleagues. Each is a unit you will move, with their own job and ability. Your nemesis is dealt a job and brings as many colleagues as you did.</p>
     <p>The two parties start in their offices at either end of one small floor. The desks are in the middle, the Rock at the top, the Lobby at the bottom, and each side's supply closets are behind its office.</p>`],
-  ['A turn', `<p>The match is eight turns. Each turn, both parties go: whoever opened the last turn closes this one. On your go, every one of your people may move up to their move (3, plus one for every two points of Hustle) and then do one thing:</p>
+  ['A turn', `<p>The match is eight turns. Each turn, both parties go: whoever opened the last turn closes this one. On your go, every one of your people may move up to their move (3, plus one for every two points of Hustle) and do one thing, in either order:</p>
     <ul><li><b>Argue</b> with an enemy on an adjacent tile. Your Charm against their Grit, in morale; they answer back for half.</li>
     <li><b>Take a card</b> from an adjacent desk. Two per desk, and they do not restock.</li>
     <li><b>Raid</b> the other side's supply closet. What is inside is written on the door: two slides of quality 2 or 3, each worth two or three desk cards at the talk. Your own closets are locked to you.</li>
@@ -582,7 +605,7 @@ const RULES = [
     <li><b>Pickpocket</b> an enemy who is carrying cards.</li>
     <li><b>Bank</b> your cards in your own office, or <b>rig</b> or <b>check</b> the projector at the Rock.</li>
     <li><b>Hold.</b> From turn 4, holding costs a point of morale, whether you chose to or had nothing in reach. Interns and contractors are used to standing about and pay nothing.</li></ul>
-    <p>Press <b>End turn for all</b> when you are done. Anyone who has not gone holds.</p>`],
+    <p>The turn ends by itself once nobody has anything left to choose. Or press <b>End turn for all</b>: anyone who has not acted holds.</p>`],
   ['Morale and breaking', `<p>Morale is a unit's health. At zero they are demoralised: they drop every card they carry onto the floor and sulk in the car park for two turns, coming back at 2 morale. Contractors simply quit.</p>
     <p>In the last two turns, anyone broken stays broken. Break the whole enemy party at once and you win on the spot.</p>`],
   ['Followers', `<p>Followers are the only thing you keep. Every undecided person on the floor can be won over, and every one you win fills a seat at your final talk, wanting a particular taste of slide. A room full of people who want Data makes a Data slide land; a room that wants nothing you brought stays quiet.</p>

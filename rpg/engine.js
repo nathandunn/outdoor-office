@@ -23,7 +23,7 @@ const JOB_PRO = [
   'Rumour hits everyone within two tiles at once; the best crowd-control on the floor.',
   'Charm plus Hustle: fast, and Pitch wins the undecided from three tiles away.',
   'Grit and Guile: hard to break, good at picking pockets. Injunction pins an enemy for a turn.',
-  'Fastest legs in the office, and a Coffee run takes a card from a desk and carries on: grab and go. Used to standing about: never loses morale for holding.',
+  'Fastest legs in the office, and a Coffee run grabs a card from a desk without using up the action: two things in one turn. Used to standing about: never loses morale for holding.',
 ];
 const JOB_CON = [
   'Slow. No Hustle at all.',
@@ -45,7 +45,7 @@ const ABILITY = [
   { name: 'Rumour', what: 'said loud enough: every enemy within 2 tiles loses 3 morale' },
   { name: 'Pitch', what: 'called across the room: somebody undecided within 3 tiles warms to you by 2' },
   { name: 'Injunction', what: 'served by shouting: an enemy within 4 cannot move on their next turn' },
-  { name: 'Coffee run', what: 'take a card from the desk next to you and keep walking: the move is not spent' },
+  { name: 'Coffee run', what: 'grab a card from the desk next to you on the way past: it does not use up your action' },
 ];
 // Consultants stand in the Lobby. Three pitches and they work for you; the other side can pitch them back.
 const CONSULTANTS = [
@@ -292,7 +292,7 @@ class Game {
     this.pickUp(u);
   }
   undoMove(u) {
-    if (!u.from || u.acted) return;
+    if (!u.from) return;
     [u.x, u.y] = u.from; u.from = null; u.moved = false;
   }
   pickUp(u) {
@@ -409,7 +409,7 @@ class Game {
         if (u.cards.length >= A.CARRY) break;
         for (const [x, y] of this.adj(u.x, u.y)) {
           const t = DESKS[this.tile(x, y)];
-          if (t !== undefined && this.stock[key(x, y)] > 0) out.push({ ...base, x, y, taste: t, label: `${ab.name}: a ${TASTE[t]} card`, sub: `${this.stock[key(x, y)]} left; then ${u.moved ? 'walk on with a fresh move' : 'the move is not spent'}` });
+          if (t !== undefined && this.stock[key(x, y)] > 0) out.push({ ...base, x, y, taste: t, label: `${ab.name}: a ${TASTE[t]} card`, sub: `${this.stock[key(x, y)]} left; your action is not spent` });
         }
         break;
       }
@@ -421,7 +421,8 @@ class Game {
 
   act(u, a) {
     if (u.acted) return;
-    u.acted = true; u.moved = true; u.from = null;
+    // Acting does not spend the move: a unit can act and then walk, or walk and then act.
+    u.acted = true; u.from = null;
     const other = this.other(u.side);
     const t = a.target !== undefined ? this.byId(a.target) : null;
     switch (a.kind) {
@@ -521,7 +522,7 @@ class Game {
       }
       case RO.SALES: this.pitch(u, t, this.pitchAmt(u, 2)); break;
       case RO.LEGAL: t.rooted = 1; this.say(u.side, `${u.name} served ${t.name} an injunction.`); break;
-      case RO.INTERN: this.takeFromDesk(u, a.x, a.y); u.moved = false; u.from = null; this.say(u.side, `${u.name} is off again.`); break;
+      case RO.INTERN: this.takeFromDesk(u, a.x, a.y); u.acted = false; this.say(u.side, `${u.name} grabbed it on the way past, and still has an action.`); break;
     }
   }
   hit(t, d, bySide) {
@@ -714,6 +715,7 @@ class Game {
       this.moveUnit(u, p.x, p.y);
       const a = this.actions(u).find(a => a.kind === p.act.kind && a.target === p.act.target && a.id === p.act.id && a.x === p.act.x && a.y === p.act.y) || { kind: 'wait' };
       this.act(u, a);
+      if (!u.acted && !this.over) { const p2 = this.plan(u, policy); if (p2) { const a2 = this.actions(u).find(x => x.kind === p2.act.kind && x.target === p2.act.target && x.id === p2.act.id && x.x === p2.act.x && x.y === p2.act.y) || { kind: 'wait' }; this.act(u, a2); } }
     }
   }
 
@@ -838,6 +840,12 @@ class Game {
           const a = this.actions(u).find(a => a.kind === p.act.kind && a.target === p.act.target && a.id === p.act.id && a.x === p.act.x && a.y === p.act.y) || { kind: 'wait' };
           this.act(u, a);
           await H('enemyActed', u, a);
+          if (!u.acted && !this.over) {
+            const p2 = this.plan(u);
+            const a2 = p2 && this.actions(u).find(x => x.kind === p2.act.kind && x.target === p2.act.target && x.id === p2.act.id && x.x === p2.act.x && x.y === p2.act.y) || { kind: 'wait' };
+            this.act(u, a2);
+            await H('enemyActed', u, a2);
+          }
         }
       }
       if (this.over) break;
