@@ -19,11 +19,11 @@ const JOB_PRO = [
   'Charm and Grit both: argues well and takes it. Rally moves the whole party.',
   'Knows gadgets: Gadget cards they take are quality 2, and as leader, Gadget slides land an extra clap per fan. Prototype makes a slide from nothing.',
   'Knows gadgets too, same as the Engineer. Jam knocks a card out of an enemy hand from four tiles away.',
-  'Tough, and the only healer: Counsel puts six morale back.',
+  'Tough, and the only healer: Counsel puts six morale back into whoever is beside them.',
   'Rumour hits everyone within two tiles at once; the best crowd-control on the floor.',
   'Charm plus Hustle: fast, and Pitch wins the undecided from three tiles away.',
   'Grit and Guile: hard to break, good at picking pockets. Injunction pins an enemy for a turn.',
-  'Fastest legs in the office, and Fetch takes a card without walking to the desk.',
+  'Fastest legs in the office, and a Coffee run takes a card from a desk and carries on: grab and go.',
 ];
 const JOB_CON = [
   'Slow. No Hustle at all.',
@@ -38,14 +38,14 @@ const JOB_CON = [
 const STAT_NAME = ['Charm', 'Guile', 'Hustle', 'Grit'];
 const STAT_WHAT = ['hits harder in an argument, lands slides', 'crits, pickpocketing', '+1 move every two points', 'more morale, takes less'];
 const ABILITY = [
-  { name: 'Rally', what: 'allies within 3 tiles who have not moved yet get 2 extra tiles this turn' },
-  { name: 'Prototype', what: 'build a Gadget slide, quality 2' },
-  { name: 'Jam', what: 'an enemy within 4 drops a card and their ability goes on cooldown' },
-  { name: 'Counsel', what: 'an ally within 2, or yourself, regains 6 morale' },
-  { name: 'Rumour', what: 'every enemy within 2 tiles loses 3 morale' },
-  { name: 'Pitch', what: 'somebody undecided within 3 tiles warms to you by 2' },
-  { name: 'Injunction', what: 'an enemy within 4 cannot move on their next turn' },
-  { name: 'Fetch', what: 'take a card from any desk within 6 tiles' },
+  { name: 'Rally', what: 'a shout across the floor: allies within 3 tiles who have not moved yet get 2 extra tiles this turn' },
+  { name: 'Prototype', what: 'build a Gadget slide, quality 2, from whatever is to hand' },
+  { name: 'Jam', what: 'over the network: an enemy within 4 drops a card and their ability goes on cooldown' },
+  { name: 'Counsel', what: 'a quiet word: an ally on the next tile, or yourself, regains 6 morale' },
+  { name: 'Rumour', what: 'said loud enough: every enemy within 2 tiles loses 3 morale' },
+  { name: 'Pitch', what: 'called across the room: somebody undecided within 3 tiles warms to you by 2' },
+  { name: 'Injunction', what: 'served by shouting: an enemy within 4 cannot move on their next turn' },
+  { name: 'Coffee run', what: 'take a card from the desk next to you and keep walking: the move is not spent' },
 ];
 // Consultants stand in the Lobby. Three pitches and they work for you; the other side can pitch them back.
 const CONSULTANTS = [
@@ -379,7 +379,7 @@ class Game {
         for (const e of within(this.active(other), 4)) out.push({ ...base, target: e.id, x: e.x, y: e.y, label: `${ab.name} ${e.name}`, sub: `${e.cards.length ? 'they drop a card; ' : ''}their ability waits ${A.CD} turns` });
         break;
       case RO.HR:
-        for (const v of within(this.active(u.side), 2)) if (v.morale < v.max) out.push({ ...base, target: v.id, x: v.x, y: v.y, label: `${ab.name} ${v === u ? 'yourself' : v.name}`, sub: `back up to ${Math.min(v.max, v.morale + 6)} of ${v.max}` });
+        for (const v of within(this.active(u.side), 1)) if (v.morale < v.max) out.push({ ...base, target: v.id, x: v.x, y: v.y, label: `${ab.name} ${v === u ? 'yourself' : v.name}`, sub: `back up to ${Math.min(v.max, v.morale + 6)} of ${v.max}` });
         break;
       case RO.MKT: {
         const hit = within(this.active(other), 2);
@@ -397,11 +397,9 @@ class Game {
         break;
       case RO.INTERN: {
         if (u.cards.length >= A.CARRY) break;
-        const seen = new Set();
-        for (const k in this.stock) {
-          const [x, y] = k.split(',').map(Number);
+        for (const [x, y] of this.adj(u.x, u.y)) {
           const t = DESKS[this.tile(x, y)];
-          if (this.stock[k] > 0 && man(u.x, u.y, x, y) <= 6 && !seen.has(t)) { seen.add(t); out.push({ ...base, x, y, taste: t, label: `${ab.name} a ${TASTE[t]} card`, sub: `from the desk ${man(u.x, u.y, x, y)} tiles away` }); }
+          if (t !== undefined && this.stock[key(x, y)] > 0) out.push({ ...base, x, y, taste: t, label: `${ab.name}: a ${TASTE[t]} card`, sub: `${this.stock[key(x, y)]} left; then ${u.moved ? 'walk on with a fresh move' : 'the move is not spent'}` });
         }
         break;
       }
@@ -513,7 +511,7 @@ class Game {
       }
       case RO.SALES: this.pitch(u, t, this.pitchAmt(u, 2)); break;
       case RO.LEGAL: t.rooted = 1; this.say(u.side, `${u.name} served ${t.name} an injunction.`); break;
-      case RO.INTERN: this.takeFromDesk(u, a.x, a.y); break;
+      case RO.INTERN: this.takeFromDesk(u, a.x, a.y); u.moved = false; u.from = null; this.say(u.side, `${u.name} is off again.`); break;
     }
   }
   hit(t, d, bySide) {
@@ -654,7 +652,7 @@ class Game {
           case RO.MKT: return this.active(this.other(u.side)).filter(e => man(u.x, u.y, e.x, e.y) <= 2).reduce((s, e) => s + (e.morale <= 3 ? 8 : 3), 0);
           case RO.SALES: return t.kind === 'contractor' ? 1 : 2.5 + (this.wouldJoin(t, u.side, this.pitchAmt(u, 2)) ? 3 : 0);
           case RO.LEGAL: return 1.5 + (this.danger(t, t.x, t.y) > 0 ? 1.5 : 0);
-          case RO.INTERN: return 3;
+          case RO.INTERN: return 3.2;
         }
         return 0;
       case 'bank': return u.cards.length * (this.danger(u, u.x, u.y) > 0 ? 1.4 : 0.8) + (u.cards.length >= A.HEAVY_LOAD ? 1 : 0);
