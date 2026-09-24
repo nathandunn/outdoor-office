@@ -62,6 +62,8 @@ const CONTRACTORS = [
   { id: 'heavy', name: 'Heavy', stats: [3, 0, 1, 3], morale: 10, what: 'slow, loud, hard to shout down; blocks a door' },
 ];
 const CONSULT_AT = 3;
+// Where new arrivals walk in: through the Lobby, or up the stairs by the Rock.
+const DOORS = [[10, 11], [10, 1]];
 const LOBBY_SPOTS = [[10, 10], [8, 11], [12, 11], [9, 10], [11, 10]];
 const P = 0, N = 1, NONE = -1;
 const A = {
@@ -143,6 +145,8 @@ class Game {
   r() { return this.rng(); }
   ri(n) { return Math.floor(this.rng() * n); }
   pick(a) { return a[this.ri(a.length)]; }
+  // "You are" for the player's leader, "Mina is" for everyone else.
+  is(u) { return u.leader && u.side === P ? 'You are' : `${u.name} is`; }
   say(side, text) { this.log.push({ side, text, turn: this.turn }); }
   other(s) { return 1 - s; }
   name() {
@@ -165,7 +169,7 @@ class Game {
       name: leader ? (side === P ? 'You' : 'Your nemesis') : kind === 'staff' ? this.name() : extra.name,
       taste: job >= 0 ? this.pick(ROLE_TASTES[job]) : this.ri(4),
       max: extra.morale || 6 + 2 * grit + (leader ? 3 : 0), morale: 0, x: -1, y: -1, cards: [], cd: 0,
-      moved: false, acted: false, sulk: 0, rooted: 0, gone: false, expires: extra.expires || 0, bonus: 0,
+      moved: false, acted: false, sulk: 0, rooted: 0, gone: false, expires: extra.expires || 0, bonus: 0, sway: 0,
     };
     u.morale = u.max;
     this.units.push(u);
@@ -325,6 +329,8 @@ class Game {
   holdCost(u) { return this.turn >= A.HOLD_COST_FROM && u.morale > 1 && u.job !== RO.INTERN && u.kind !== 'contractor' ? 1 : 0; }
   pitchAmt(u, base = 1) { return base + (u.stats[0] >= 3 ? 1 : 0) + (this.has(u.side, 'hunt') ? 1 : 0); }
   joinAt(n) { return n.kind === 'consultant' ? CONSULT_AT : n.kind === 'contractor' ? 1 : A.JOIN_AT; }
+  // How hard someone on the other side is to turn: leaders never; contractors on one pitch; the demoralised on two; everyone else three.
+  poachAt(e) { return e.leader ? Infinity : e.kind === 'contractor' ? 1 : e.morale <= 3 ? 2 : 3; }
   wouldJoin(n, side, amt) { const r = warmRule(n.amt, n.for, amt, side); return r[1] === side && r[0] >= this.joinAt(n); }
 
   actions(u) {
@@ -338,6 +344,11 @@ class Game {
         const d = this.dmgOf(u, e);
         out.push({ kind: 'confront', target: e.id, x, y, label: `Argue with ${e.name}`,
           sub: `${d}–${d + 1} morale off their ${e.morale}${d >= e.morale ? ', breaks them' : `; they answer back for ${this.counterOf(e, u)}`}` });
+        if (!e.leader) {
+          const amt = this.pitchAmt(u), at = this.poachAt(e);
+          out.push({ kind: 'poach', target: e.id, x, y, label: `Poach ${e.name}`,
+            sub: e.sway + amt >= at ? `comes over to your side${e.cards.length ? `, with ${e.cards.length} card${e.cards.length === 1 ? '' : 's'}` : ''}` : `wavers ${e.sway + amt} of ${at}; they steady by 1 each turn` });
+        }
         if (e.cards.length) out.push({ kind: 'pickpocket', target: e.id, x, y, label: `Pickpocket ${e.name}`,
           sub: `${Math.round(100 * this.pickChance(u))}% to lift one of their ${e.cards.length} card${e.cards.length === 1 ? '' : 's'}` });
       }
@@ -456,6 +467,12 @@ class Game {
         break;
       }
       case 'pitch': this.pitch(u, t, this.pitchAmt(u)); break;
+      case 'poach': {
+        t.sway += this.pitchAmt(u);
+        if (t.sway >= this.poachAt(t)) this.defect(t, u.side);
+        else this.say(u.side, `${this.is(u)} working on ${t.name}: wavering, ${t.sway} of ${this.poachAt(t)}.`);
+        break;
+      }
       case 'ability': this.useAbility(u, a, t); break;
       case 'bank': this.bank[u.side].push(...u.cards); this.say(u.side, `${u.name} banked ${u.cards.length} card${u.cards.length === 1 ? '' : 's'} in the office.`); u.cards = []; break;
       case 'wait': u.morale -= this.holdCost(u); break;
@@ -464,6 +481,31 @@ class Game {
       default: break;
     }
     this.checkRout();
+  }
+  defect(t, side) {
+    const was = t.side;
+    t.side = side; t.sway = 0; t.moved = true; t.acted = true; t.rooted = 0; t.from = null;
+    if (t.kind === 'contractor') t.expires = Math.max(t.expires, this.turn + 1);
+    this.say(side, `${t.name} has changed sides${t.cards.length ? `, bringing ${t.cards.length} card${t.cards.length === 1 ? '' : 's'}` : ''}. ${side === P ? 'Now yours' : 'Now theirs'}.`);
+    this.checkRout();
+    return was;
+  }
+  // Somebody new wanders in and stands just inside a door.
+  arrival() {
+    const [dx, dy] = this.pick(DOORS);
+    const role = this.pick([0, 1, 2, 3, 4, 5, 6, 7, 7, 7, 8, 8]);
+    const n = { id: this.nextId++, kind: 'n', name: this.name(), role, taste: this.pick(ROLE_TASTES[role]), x: -1, y: -1, amt: 0, for: NONE, arrived: this.turn };
+    const seen = new Set([key(dx, dy)]);
+    const q = [[dx, dy]];
+    while (q.length) {
+      const [x, y] = q.shift();
+      if (this.free(x, y) && this.tile(x, y) !== 'L') { n.x = x; n.y = y; break; }
+      for (const [ax, ay] of DIRS) { const nx = x + ax, ny = y + ay, k = key(nx, ny); if (!seen.has(k) && this.tile(nx, ny) !== '#') { seen.add(k); q.push([nx, ny]); } }
+    }
+    if (n.x < 0) return null;
+    this.neutrals.push(n);
+    this.say(NONE, `${n.name} (${ROLE_NAME[role]}, wants ${TASTE[n.taste]}) has just walked in ${dy > 5 ? 'through the Lobby' : 'by the Rock'}.`);
+    return n;
   }
   lobby() { for (let y = 0; y < A.H; y++) for (let x = 0; x < A.W; x++) if (this.map[y][x] === 'L') return [x, y]; return [15, 9]; }
   gadgetHand(u) { return u.job === RO.ENG || u.job === RO.IT; }
@@ -537,7 +579,7 @@ class Game {
     if (t.kind === 'contractor') { t.gone = true; this.say(t.side, `${t.name} quit on the spot${dropped ? ', dropping ' + dropped + ' cards' : ''}.`); }
     else {
       t.sulk = this.fuse() ? 99 : this.has(t.side, 'pr') ? 1 : A.SULK;
-      this.say(t.side, `${t.name} is demoralised and gone to sulk in the car park${dropped ? `, dropping ${dropped} card${dropped === 1 ? '' : 's'}` : ''}${this.fuse() ? '. Too late in the day to come back' : ''}.`);
+      this.say(t.side, `${this.is(t)} demoralised and gone to sulk in the car park${dropped ? `, dropping ${dropped} card${dropped === 1 ? '' : 's'}` : ''}${this.fuse() ? '. Too late in the day to come back' : ''}.`);
     }
     t.lx = t.x; t.ly = t.y; t.x = -1; t.y = -1;
   }
@@ -555,8 +597,11 @@ class Game {
   // --- turns ---
   startTurn(side) {
     this.side = side;
+    // A new turn: now and then somebody new walks in, until all hands.
+    if (side === this.first && this.turn > 1 && this.turn <= A.TURNS - A.FUSE && this.r() < 0.6) this.arrival();
     for (const u of this.units.filter(u => u.side === side && !u.gone)) {
       u.moved = false; u.acted = false; u.from = null; u.bonus = 0;
+      if (u.sway > 0) u.sway--;
       if (u.cd > 0) u.cd--;
       if (u.kind === 'contractor' && this.turn >= u.expires) {
         u.gone = true;
@@ -573,7 +618,7 @@ class Game {
           const [sx, sy] = this.spawnTiles(side)[0];
           this.placeNear(u, sx, sy);
           u.morale = 2;
-          this.say(side, `${u.name} is back from the car park, shaky, at ${u.morale} morale. Somebody had better look after them.`);
+          this.say(side, `${this.is(u)} back from the car park, shaky, at ${u.morale} morale. Somebody had better look after them.`);
         } else { u.moved = u.acted = true; }
         continue;
       }
@@ -646,6 +691,11 @@ class Game {
         const c = this.counterOf(t, u);
         if (c >= u.morale) return -10;
         return d * 1.7 + (t.leader ? 1 : 0) - 0.5 * c + (d >= t.morale - 2 ? 1.5 : 0);
+      }
+      case 'poach': {
+        const at = this.poachAt(t), after = t.sway + this.pitchAmt(u);
+        if (after >= at) return 7 + 2 * t.cards.length + t.stats[0] * 0.5;
+        return 1.2 + 2 * (after / at) + (t.morale <= 4 ? 1 : 0);
       }
       case 'pickpocket': return this.pickChance(u) * 3 * (u.cards.length < A.CARRY ? 1 : 0);
       case 'desk': return 2 + 0.3 * this.demand(u.side)[a.taste] + (a.taste === 2 && this.gadgetHand(u) ? 1 : 0);

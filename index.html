@@ -313,6 +313,8 @@ const CONTRACTORS = [
   { id: 'heavy', name: 'Heavy', stats: [3, 0, 1, 3], morale: 10, what: 'slow, loud, hard to shout down; blocks a door' },
 ];
 const CONSULT_AT = 3;
+// Where new arrivals walk in: through the Lobby, or up the stairs by the Rock.
+const DOORS = [[10, 11], [10, 1]];
 const LOBBY_SPOTS = [[10, 10], [8, 11], [12, 11], [9, 10], [11, 10]];
 const P = 0, N = 1, NONE = -1;
 const A = {
@@ -394,6 +396,8 @@ class Game {
   r() { return this.rng(); }
   ri(n) { return Math.floor(this.rng() * n); }
   pick(a) { return a[this.ri(a.length)]; }
+  // "You are" for the player's leader, "Mina is" for everyone else.
+  is(u) { return u.leader && u.side === P ? 'You are' : `${u.name} is`; }
   say(side, text) { this.log.push({ side, text, turn: this.turn }); }
   other(s) { return 1 - s; }
   name() {
@@ -416,7 +420,7 @@ class Game {
       name: leader ? (side === P ? 'You' : 'Your nemesis') : kind === 'staff' ? this.name() : extra.name,
       taste: job >= 0 ? this.pick(ROLE_TASTES[job]) : this.ri(4),
       max: extra.morale || 6 + 2 * grit + (leader ? 3 : 0), morale: 0, x: -1, y: -1, cards: [], cd: 0,
-      moved: false, acted: false, sulk: 0, rooted: 0, gone: false, expires: extra.expires || 0, bonus: 0,
+      moved: false, acted: false, sulk: 0, rooted: 0, gone: false, expires: extra.expires || 0, bonus: 0, sway: 0,
     };
     u.morale = u.max;
     this.units.push(u);
@@ -576,6 +580,8 @@ class Game {
   holdCost(u) { return this.turn >= A.HOLD_COST_FROM && u.morale > 1 && u.job !== RO.INTERN && u.kind !== 'contractor' ? 1 : 0; }
   pitchAmt(u, base = 1) { return base + (u.stats[0] >= 3 ? 1 : 0) + (this.has(u.side, 'hunt') ? 1 : 0); }
   joinAt(n) { return n.kind === 'consultant' ? CONSULT_AT : n.kind === 'contractor' ? 1 : A.JOIN_AT; }
+  // How hard someone on the other side is to turn: leaders never; contractors on one pitch; the demoralised on two; everyone else three.
+  poachAt(e) { return e.leader ? Infinity : e.kind === 'contractor' ? 1 : e.morale <= 3 ? 2 : 3; }
   wouldJoin(n, side, amt) { const r = warmRule(n.amt, n.for, amt, side); return r[1] === side && r[0] >= this.joinAt(n); }
 
   actions(u) {
@@ -589,6 +595,11 @@ class Game {
         const d = this.dmgOf(u, e);
         out.push({ kind: 'confront', target: e.id, x, y, label: `Argue with ${e.name}`,
           sub: `${d}–${d + 1} morale off their ${e.morale}${d >= e.morale ? ', breaks them' : `; they answer back for ${this.counterOf(e, u)}`}` });
+        if (!e.leader) {
+          const amt = this.pitchAmt(u), at = this.poachAt(e);
+          out.push({ kind: 'poach', target: e.id, x, y, label: `Poach ${e.name}`,
+            sub: e.sway + amt >= at ? `comes over to your side${e.cards.length ? `, with ${e.cards.length} card${e.cards.length === 1 ? '' : 's'}` : ''}` : `wavers ${e.sway + amt} of ${at}; they steady by 1 each turn` });
+        }
         if (e.cards.length) out.push({ kind: 'pickpocket', target: e.id, x, y, label: `Pickpocket ${e.name}`,
           sub: `${Math.round(100 * this.pickChance(u))}% to lift one of their ${e.cards.length} card${e.cards.length === 1 ? '' : 's'}` });
       }
@@ -707,6 +718,12 @@ class Game {
         break;
       }
       case 'pitch': this.pitch(u, t, this.pitchAmt(u)); break;
+      case 'poach': {
+        t.sway += this.pitchAmt(u);
+        if (t.sway >= this.poachAt(t)) this.defect(t, u.side);
+        else this.say(u.side, `${this.is(u)} working on ${t.name}: wavering, ${t.sway} of ${this.poachAt(t)}.`);
+        break;
+      }
       case 'ability': this.useAbility(u, a, t); break;
       case 'bank': this.bank[u.side].push(...u.cards); this.say(u.side, `${u.name} banked ${u.cards.length} card${u.cards.length === 1 ? '' : 's'} in the office.`); u.cards = []; break;
       case 'wait': u.morale -= this.holdCost(u); break;
@@ -715,6 +732,31 @@ class Game {
       default: break;
     }
     this.checkRout();
+  }
+  defect(t, side) {
+    const was = t.side;
+    t.side = side; t.sway = 0; t.moved = true; t.acted = true; t.rooted = 0; t.from = null;
+    if (t.kind === 'contractor') t.expires = Math.max(t.expires, this.turn + 1);
+    this.say(side, `${t.name} has changed sides${t.cards.length ? `, bringing ${t.cards.length} card${t.cards.length === 1 ? '' : 's'}` : ''}. ${side === P ? 'Now yours' : 'Now theirs'}.`);
+    this.checkRout();
+    return was;
+  }
+  // Somebody new wanders in and stands just inside a door.
+  arrival() {
+    const [dx, dy] = this.pick(DOORS);
+    const role = this.pick([0, 1, 2, 3, 4, 5, 6, 7, 7, 7, 8, 8]);
+    const n = { id: this.nextId++, kind: 'n', name: this.name(), role, taste: this.pick(ROLE_TASTES[role]), x: -1, y: -1, amt: 0, for: NONE, arrived: this.turn };
+    const seen = new Set([key(dx, dy)]);
+    const q = [[dx, dy]];
+    while (q.length) {
+      const [x, y] = q.shift();
+      if (this.free(x, y) && this.tile(x, y) !== 'L') { n.x = x; n.y = y; break; }
+      for (const [ax, ay] of DIRS) { const nx = x + ax, ny = y + ay, k = key(nx, ny); if (!seen.has(k) && this.tile(nx, ny) !== '#') { seen.add(k); q.push([nx, ny]); } }
+    }
+    if (n.x < 0) return null;
+    this.neutrals.push(n);
+    this.say(NONE, `${n.name} (${ROLE_NAME[role]}, wants ${TASTE[n.taste]}) has just walked in ${dy > 5 ? 'through the Lobby' : 'by the Rock'}.`);
+    return n;
   }
   lobby() { for (let y = 0; y < A.H; y++) for (let x = 0; x < A.W; x++) if (this.map[y][x] === 'L') return [x, y]; return [15, 9]; }
   gadgetHand(u) { return u.job === RO.ENG || u.job === RO.IT; }
@@ -788,7 +830,7 @@ class Game {
     if (t.kind === 'contractor') { t.gone = true; this.say(t.side, `${t.name} quit on the spot${dropped ? ', dropping ' + dropped + ' cards' : ''}.`); }
     else {
       t.sulk = this.fuse() ? 99 : this.has(t.side, 'pr') ? 1 : A.SULK;
-      this.say(t.side, `${t.name} is demoralised and gone to sulk in the car park${dropped ? `, dropping ${dropped} card${dropped === 1 ? '' : 's'}` : ''}${this.fuse() ? '. Too late in the day to come back' : ''}.`);
+      this.say(t.side, `${this.is(t)} demoralised and gone to sulk in the car park${dropped ? `, dropping ${dropped} card${dropped === 1 ? '' : 's'}` : ''}${this.fuse() ? '. Too late in the day to come back' : ''}.`);
     }
     t.lx = t.x; t.ly = t.y; t.x = -1; t.y = -1;
   }
@@ -806,8 +848,11 @@ class Game {
   // --- turns ---
   startTurn(side) {
     this.side = side;
+    // A new turn: now and then somebody new walks in, until all hands.
+    if (side === this.first && this.turn > 1 && this.turn <= A.TURNS - A.FUSE && this.r() < 0.6) this.arrival();
     for (const u of this.units.filter(u => u.side === side && !u.gone)) {
       u.moved = false; u.acted = false; u.from = null; u.bonus = 0;
+      if (u.sway > 0) u.sway--;
       if (u.cd > 0) u.cd--;
       if (u.kind === 'contractor' && this.turn >= u.expires) {
         u.gone = true;
@@ -824,7 +869,7 @@ class Game {
           const [sx, sy] = this.spawnTiles(side)[0];
           this.placeNear(u, sx, sy);
           u.morale = 2;
-          this.say(side, `${u.name} is back from the car park, shaky, at ${u.morale} morale. Somebody had better look after them.`);
+          this.say(side, `${this.is(u)} back from the car park, shaky, at ${u.morale} morale. Somebody had better look after them.`);
         } else { u.moved = u.acted = true; }
         continue;
       }
@@ -897,6 +942,11 @@ class Game {
         const c = this.counterOf(t, u);
         if (c >= u.morale) return -10;
         return d * 1.7 + (t.leader ? 1 : 0) - 0.5 * c + (d >= t.morale - 2 ? 1.5 : 0);
+      }
+      case 'poach': {
+        const at = this.poachAt(t), after = t.sway + this.pitchAmt(u);
+        if (after >= at) return 7 + 2 * t.cards.length + t.stats[0] * 0.5;
+        return 1.2 + 2 * (after / at) + (t.morale <= 4 ? 1 : 0);
       }
       case 'pickpocket': return this.pickChance(u) * 3 * (u.cards.length < A.CARRY ? 1 : 0);
       case 'desk': return 2 + 0.3 * this.demand(u.side)[a.taste] + (a.taste === 2 && this.gadgetHand(u) ? 1 : 0);
@@ -1173,7 +1223,7 @@ function banner(text, ms = 1100) {
   return sleep(ms).then(() => b.classList.remove('on'));
 }
 function unitTitle(u) {
-  return `${u.name}, ${u.kind === 'contractor' ? 'contractor' : ROLE_NAME[u.job]}${u.leader ? ' (leader)' : ''}. Morale ${u.morale}/${u.max}. ` +
+  return `${u.name}, ${u.kind === 'contractor' ? 'contractor' : ROLE_NAME[u.job]}${u.leader ? ' (leader)' : ''}. Morale ${u.morale}/${u.max}. ${u.sway ? `Wavering: ${u.sway} of ${G.poachAt(u)} toward the ${u.side === P ? 'other side' : 'your side'}. ` : ''}` +
     `Charm ${u.stats[0]}, Guile ${u.stats[1]}, Hustle ${u.stats[2]}, Grit ${u.stats[3]}. Wants ${TASTE[u.taste]}. Carrying ${u.cards.length}.`;
 }
 
@@ -1257,7 +1307,8 @@ function drawBoard() {
     else s += `<circle cx="${X}" cy="${Y}" r="13" fill="${fill}" stroke="${lean}" stroke-width="${n.amt ? 2.6 : 1.6}"/>`;
     if (n.amt > 0 && !owner) s += `<circle cx="${X}" cy="${Y}" r="17" fill="none" stroke="${lean}" stroke-width="3" stroke-dasharray="${(n.amt / at) * 106.8} 120" opacity=".9"/>`;
     s += `<text x="${X}" y="${Y + 5}" text-anchor="middle" font-size="${n.kind === 'n' ? 14 : 11}" font-weight="${n.kind === 'n' ? 400 : 700}" fill="${dark ? '#fff' : INK}">${n.kind === 'n' ? TASTE_GLYPH[n.taste] : n.kind === 'consultant' ? 'C' : n.name.slice(0, 3)}</text>`;
-    if (n.kind === 'n') s += `<text class="hand" x="${X}" y="${Y + 31}" text-anchor="middle" font-size="14" fill="${INK}" opacity=".85">${esc(n.name)}</text>`;
+    if (n.kind === 'n') s += `<text class="hand" x="${X}" y="${Y + 31}" text-anchor="middle" font-size="14" fill="${INK}" opacity=".85">${esc(n.name)}${n.arrived && G.turn - n.arrived <= 1 ? ' (new)' : ''}</text>`;
+    if (n.kind === 'n' && n.arrived && G.turn - n.arrived <= 1) s += `<text x="${X + 11}" y="${Y - 10}" font-size="13" fill="${YOU}">✦</text>`;
     s += `</g>`;
   }
   // Where you can move, as a click layer above the labels, loot and paths, so nothing drawn there eats the click.
@@ -1281,6 +1332,7 @@ function drawBoard() {
     s += `<rect x="${X - 16}" y="${Y + 18}" width="32" height="5" fill="#fff" stroke="${INK}" stroke-width=".8"/><rect x="${X - 16}" y="${Y + 18}" width="${32 * f}" height="5" fill="${f < 0.34 ? '#e06a2a' : c}"/>`;
     if (u.cards.length) s += `<rect x="${X + 10}" y="${Y - 21}" width="12" height="15" fill="#fff" stroke="${INK}" stroke-width="1"/><text x="${X + 16}" y="${Y - 10}" text-anchor="middle" font-size="10" fill="${INK}">${u.cards.length}</text>`;
     if (u.rooted) s += `<text x="${X - 22}" y="${Y - 10}" font-size="14" fill="${INK}">⛓</text>`;
+    if (u.sway > 0) { const at = G.poachAt(u), other = u.side === P ? THEM : YOU; s += `<circle cx="${X}" cy="${Y}" r="20" fill="none" stroke="${other}" stroke-width="3.5" stroke-dasharray="${(u.sway / at) * 125.7} 130" transform="rotate(-90 ${X} ${Y})"/>`; }
     s += `</g>`;
   }
   // the car park: everyone who is sulking, and how long for
@@ -1375,7 +1427,7 @@ function render() {
     <div class="wants">${TASTE.map((t, i) => `<div><b>${d[i]}</b><span>${TASTE_GLYPH[i]} ${t}</span></div>`).join('')}</div>
     ${flags.length ? `<p class="flags">${flags.map(esc).join('. ')}.</p>` : ''}
     <details class="cons fold" data-f="undecided" ${UI.fold.undecided ? 'open' : ''}><summary><b>Undecided on the floor</b> <span class="who">(${G.neutrals.filter(n => n.kind === 'n').length}; two pitches each${canPitch.size ? `, ${canPitch.size} within reach of ${esc(G.byId(UI.sel).name)}` : ''})</span></summary>
-      <ul>${G.neutrals.filter(n => n.kind === 'n').map(n => `<li class="${canPitch.has(n.id) ? 'near' : ''}"><span class="dot" style="background:${leanFill(n)};border-color:${n.amt && n.for !== NONE ? (n.for === P ? YOU : THEM) : INK}"></span><b>${esc(n.name)}</b>, ${ROLE_NAME[n.role]}, wants ${TASTE_GLYPH[n.taste]} ${TASTE[n.taste]}${n.amt ? `; <span style="color:${n.for === P ? YOU : THEM}">warming to ${n.for === P ? 'you' : 'them'} (${n.amt} of ${A.JOIN_AT})</span>` : ''}${canPitch.has(n.id) ? ' <span class="reach">in reach</span>' : ''}</li>`).join('') || '<li class="who">Nobody left to win over.</li>'}</ul></details>
+      <ul>${G.neutrals.filter(n => n.kind === 'n').map(n => `<li class="${canPitch.has(n.id) ? 'near' : ''}"><span class="dot" style="background:${leanFill(n)};border-color:${n.amt && n.for !== NONE ? (n.for === P ? YOU : THEM) : INK}"></span><b>${esc(n.name)}</b>${n.arrived && G.turn - n.arrived <= 1 ? ' <span class="reach">new</span>' : ''}, ${ROLE_NAME[n.role]}, wants ${TASTE_GLYPH[n.taste]} ${TASTE[n.taste]}${n.amt ? `; <span style="color:${n.for === P ? YOU : THEM}">warming to ${n.for === P ? 'you' : 'them'} (${n.amt} of ${A.JOIN_AT})</span>` : ''}${canPitch.has(n.id) ? ' <span class="reach">in reach</span>' : ''}</li>`).join('') || '<li class="who">Nobody left to win over.</li>'}</ul></details>
     <details class="cons fold" data-f="loot" ${UI.fold.loot ? 'open' : ''}><summary><b>Worth going for</b> <span class="who">(a quality 3 slide is worth three desk cards)</span></summary><ul>
       ${Object.keys(G.closets).map(k => { const [x, y] = k.split(',').map(Number); const mine = !G.raidable(P, x); return `<li><b>${mine ? 'Your' : 'Their'} closet</b>${mine ? ' (only they can raid it)' : ''}: ${G.closets[k].map(c => `${TASTE_GLYPH[c.taste]} ${esc(c.name)} q${c.q}`).join(', ')}</li>`; }).join('')}
       ${Object.keys(G.loot).map(k => `<li><b>On the floor</b>: ${G.loot[k].map(c => `${TASTE_GLYPH[c.taste]} ${esc(c.name)} q${c.q}`).join(', ')}</li>`).join('')}
@@ -1413,7 +1465,7 @@ function renderUnit() {
     else {
       acts = G.actions(u);
       if (!u.moved) h += `<p class="who">Move and act, in either order: ${PHONE ? 'tap' : 'click'} a pink tile to move, or act from here first.</p>`;
-      h += `<div class="cards">${acts.map((o, i) => `<button class="mv ${o.kind === 'confront' ? 'attack' : ''} ${['rig', 'pickpocket'].includes(o.kind) ? 'trick' : ''}" data-i="${i}"><span class="l">${esc(o.label)}</span><span class="st"></span><span class="s">${esc(o.sub)}</span></button>`).join('')}</div>`;
+      h += `<div class="cards">${acts.map((o, i) => `<button class="mv ${o.kind === 'confront' || o.kind === 'poach' ? 'attack' : ''} ${['rig', 'pickpocket'].includes(o.kind) ? 'trick' : ''}" data-i="${i}"><span class="l">${esc(o.label)}</span><span class="st"></span><span class="s">${esc(o.sub)}</span></button>`).join('')}</div>`;
     }
     h += `<div class="ctl">${u.from && !u.acted ? '<button class="btn alt" id="undo">Undo move</button>' : ''}${endTurnButton()}</div>`;
   }
@@ -1433,7 +1485,7 @@ function renderUnit() {
 
 function renderRoster() {
   const row = u => {
-    const where = u.gone ? 'gone' : u.sulk >= 99 ? 'out for the match' : u.sulk ? `sulking, back in ${u.sulk}` : `${u.morale}/${u.max}`;
+    const where = u.gone ? 'gone' : u.sulk >= 99 ? 'out for the match' : u.sulk ? `sulking, back in ${u.sulk}` : `${u.morale}/${u.max}${u.sway ? `, wavering ${u.sway}/${G.poachAt(u)}` : ''}`;
     return `<button class="rrow ${UI.sel === u.id ? 'on' : ''} ${(u.side === P && UI.turn && u.acted) || u.sulk ? 'done' : ''}" data-id="${u.id}" ${u.sulk || u.gone ? 'disabled' : ''}>
       <span>${esc(u.name)} <small>${u.kind === 'contractor' ? 'contractor' : ROLE_NAME[u.job]}${u.cards.length ? `, ${u.cards.length} card${u.cards.length === 1 ? '' : 's'}` : ''}</small></span>
       <span class="bar ${u.side === P ? '' : 'them'}"><i style="width:${100 * u.morale / u.max}%"></i></span><small>${where}</small></button>`;
@@ -1628,6 +1680,7 @@ const RULES = [
     <li><b>Raid</b> the other side's supply closet. What is inside is written on the door: two slides of quality 2 or 3, each worth two or three desk cards at the talk. Your own closets are locked to you.</li>
     <li><b>Pitch</b> somebody undecided. Two pitches and they are your follower. Pitching someone the other side has been courting wears that down first.</li>
     <li><b>Use the job ability</b>, then wait three turns for it to come back. Most need the target next to you; the ones that reach further are shouted, or sent over the network.</li>
+    <li><b>Poach</b> one of theirs standing next to you. Three pitches and they change sides, bringing their cards; two if their morale is 3 or less; one for a contractor. They steady by a point each turn, so it takes two of you, or a run of turns. Leaders cannot be poached, and your people can be poached back.</li>
     <li><b>Pickpocket</b> an enemy who is carrying cards.</li>
     <li><b>Bank</b> your cards in your own office, or <b>rig</b> or <b>check</b> the projector at the Rock.</li>
     <li><b>Hold.</b> From turn 4, holding costs a point of morale, whether you chose to or had nothing in reach. Interns and contractors are used to standing about and pay nothing.</li></ul>
@@ -1635,6 +1688,7 @@ const RULES = [
   ['Morale and breaking', `<p>Morale is a unit's health. At zero they are demoralised: they drop every card they carry onto the floor and sulk in the car park for two turns, coming back at 2 morale. Contractors simply quit.</p>
     <p>In the last two turns, anyone broken stays broken. Break the whole enemy party at once and you win on the spot.</p>`],
   ['Followers', `<p>Followers are the only thing you keep. Every undecided person on the floor can be won over, and every one you win fills a seat at your final talk, wanting a particular taste of slide. A room full of people who want Data makes a Data slide land; a room that wants nothing you brought stays quiet.</p>
+    <p>The office is not a closed room. Now and then somebody new walks in, through the Lobby or by the Rock, marked ✦ new on the floor. They stop arriving at all hands.</p>
     <p>When time is called, every undecided person still on the floor goes with whichever party has more people standing beside them. Where your units end the last turn matters.</p>`],
   ['The Lobby', `<p>Consultants and contractors wait in the Lobby and are won by pitching, like anyone else. A consultant takes three pitches, then gives your side a standing rule for the rest of the match; the other side can pitch them back. A contractor signs on one pitch, joins your party for two turns, and then goes back to the Lobby to be signed again.</p>`],
   ['Ending and winning', `<p>After the eighth turn, both sides present. Each picks up to three slides from every card their party still holds, banked or carried, without seeing the other's, and chooses who stands up with each one: anyone of yours still on the floor. The presenter's Charm goes into the slide, an Engineer or IT makes a Gadget slide land harder, and whoever holds the second slide takes the heckle with their Grit. The slides then go up in turns, one side then the other.</p>
@@ -1645,12 +1699,14 @@ const RULES = [
     <li><b>Cards held</b>: what you can bring to the talk. Quality 1 from desks, 2 or 3 from closets. Banked cards cannot be lost.</li>
     <li><b>Morale</b> on every token and in the roster. Orange means one more argument breaks them.</li>
     <li><b>Warming</b> on the undecided: pitches so far out of the pitches they need, in the colour of the side they lean to.</li>
+    <li><b>Wavering</b>: a ring in the other side's colour round one of your people means they are being poached. Get them away, or break whoever is doing it.</li>
     <li><b>Moves</b> on the unit card: how far they go this turn, one less when carrying three cards.</li></ul>`],
   ['Notes on strategy', `<ul><li>The desks empty fast and are between you. Whoever gets there first with two units usually keeps them.</li>
     <li>Fetch what your room wants, not what is nearest. Three Data slides in a row score once.</li>
     <li>Carriers are targets. Bank early, or send a fast unit home with the closet loot.</li>
     <li>Argue in pairs. One unit softens, the next breaks, and the cards fall to whoever is standing there.</li>
-    <li>A unit at 2 morale that just came back is bait, and the other side knows it.</li>
+    <li>A unit at 2 morale that just came back is bait, and the other side knows it. It is also easier to poach than to break: two pitches, and you keep them.</li>
+    <li>Stand near the doors. Newcomers arrive undecided and next to whoever is there.</li>
     <li>Spend the last two turns standing next to the undecided. All hands rewards bodies, not cards.</li>
     <li>Consultants are three actions for a whole-match rule. The Keynote Coach alone is worth about nine claps.</li>
     <li>Keep your Charm on the floor for the talk. A broken presenter cannot stand up, and the leader's Grit is not always the best answer to a heckle.</li></ul>`],
