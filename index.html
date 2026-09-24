@@ -216,7 +216,11 @@ button, .tile, .unit { touch-action: manipulation; -webkit-tap-highlight-color: 
 .pro { color: #2e7d32; font-weight: 700; } .con { color: var(--you); font-weight: 700; }
 .cons li.near { background: #fff6fb; margin-left: -4px; padding-left: 4px; border-radius: 3px; }
 .reach { color: var(--you); font-weight: 700; font-size: 12px; }
-.slide.picked { background: #fff6fb; box-shadow: 4px 4px 0 var(--hi); border-color: var(--you); }
+.slide.picked, .job.chosen { background: var(--ink); color: var(--card); border-color: var(--ink); box-shadow: none; }
+.slide.picked small, .job.chosen small { color: rgba(255, 253, 246, .75); }
+.slide.picked .num { background: var(--card); color: var(--ink); }
+.btn[hidden], .num[hidden] { display: none; }
+#oops { position: fixed; left: 8px; right: 8px; bottom: 8px; z-index: 40; background: var(--you); color: #fff; padding: 10px 14px; border-radius: 4px; font-size: 14px; box-shadow: 0 8px 20px rgba(0,0,0,.35); }
 .num { display: inline-block; min-width: 22px; height: 22px; line-height: 22px; text-align: center; border-radius: 50%; background: var(--you); color: #fff; font-family: var(--body); font-size: 13px; font-weight: 700; }
 .pres label { display: block; margin: 6px 0; font-size: 14px; }
 .pres select { font: inherit; font-size: 14px; padding: 3px 6px; border: 2px solid var(--ink); border-radius: 4px; background: #fff; max-width: 100%; }
@@ -1187,6 +1191,14 @@ if (typeof module !== 'undefined') module.exports = { Game, A, P, N, NONE, RO, P
 </script>
 <script>
 const $ = s => document.querySelector(s);
+// If anything breaks, say so on screen rather than failing silently.
+function oops(msg) {
+  let d = document.getElementById('oops');
+  if (!d) { d = document.createElement('div'); d.id = 'oops'; d.setAttribute('role', 'alert'); document.body.appendChild(d); }
+  d.textContent = `Something broke: ${msg}. Screenshot this line for Claude.`;
+}
+window.addEventListener('error', e => oops(e.message || 'unknown error'));
+window.addEventListener('unhandledrejection', e => oops((e.reason && (e.reason.stack || e.reason.message)) || String(e.reason)));
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const YOU = '#b8322a', THEM = '#2a5db0', INK = '#1f2440', PAD = '#fbf1a9', HI = '#ff9fd2';
 const CS = 46, OX = 17, OY = 11;
@@ -1577,7 +1589,8 @@ function setupFlow() {
     };
     const pageParty = () => sheet(`<h2>Who fights beside you?</h2>
       <p>Up to four colleagues, each a unit you move, with their job's ability. Your nemesis brings as many as you do.</p>
-      <div class="jobs">${PLAYABLE.map(r => `<button class="job" data-r="${r}" ${cfg.party.length >= 4 ? 'disabled' : ''}><b>+ ${ROLE_NAME[r]}</b><small>${ABILITY[r].name}: ${esc(ABILITY[r].what)}</small></button>`).join('')}</div>
+      <div class="jobs">${PLAYABLE.map(r => { const n = cfg.party.filter(x => x === r).length; return `<button class="job ${n ? 'chosen' : ''}" data-r="${r}" ${cfg.party.length >= 4 && !n ? 'disabled' : ''}><b>${n ? `${ROLE_NAME[r]}${n > 1 ? ' ×' + n : ''}` : '+ ' + ROLE_NAME[r]}</b><small>${ABILITY[r].name}: ${esc(ABILITY[r].what)}</small></button>`; }).join('')}</div>
+      <p class="who">${cfg.party.length} of 4 chosen. ${cfg.party.length >= 4 ? 'Take one out below to change your mind.' : 'The same job can come twice.'}</p>
       <h3>Your party</h3><div class="chips">${cfg.party.length ? cfg.party.map((r, i) => `<button class="chip" data-x="${i}" aria-label="remove ${ROLE_NAME[r]}">${ROLE_NAME[r]} ✕</button>`).join('') : '<span class="who">Just you so far. One break and you are out.</span>'}</div>
       <div class="row"><button class="btn alt" id="back">Back to stats</button><button class="btn" id="go">Into the office</button></div>`,
       el => {
@@ -1605,13 +1618,13 @@ function talkSheet(T, mode, resolve) {
     const want = Math.min(3, S.hand.length);
     const claps = (c, u) => G.slideClaps(T, P, c, u);
     const presHtml = () => picked.length ? `<h3>Who presents each</h3>${picked.map((i, k) => { const c = S.hand[i]; return `<label><span class="num">${k + 1}</span> ${TASTE_GLYPH[c.taste]} ${esc(c.name)}: <select data-k="${i}">${pres.map(u => `<option value="${u.id}" ${(by[i] ?? G.leader(P).id) === u.id ? 'selected' : ''}>${esc(u.name)}${u.leader ? '' : ` (${ROLE_NAME[u.job]}, Charm ${u.stats[0]})`}: about ${claps(c, u.id)} claps${c.taste === 2 && G.gadgetHand(u) ? ', knows gadgets' : ''}</option>`).join('')}</select></label>`; }).join('')}` : '';
-    const countText = () => `${picked.length} of ${want} picked${picked.length && picked.length < want ? '; you can present fewer, but every empty slot is claps you are not getting' : ''}.`;
-    body += `<p class="who">${PHONE ? 'Tap' : 'Click'} up to three cards, in the order they go up; ${PHONE ? 'tap' : 'click'} again to take one back. Their three stay hidden until the slides alternate, and a slide that repeats the taste the room just saw gets nothing. ${S.hand.length ? '' : 'You have no cards at all.'}</p>
+    const countText = () => picked.length < want ? `Pick ${want - picked.length} more.` : 'All picked. Choose who presents each, then present.';
+    body += `<p class="who">${S.hand.length ? `${PHONE ? 'Tap' : 'Click'} ${want === 1 ? 'your card' : `${want} cards, in the order they go up`}; ${PHONE ? 'tap' : 'click'} a black one to put it back.` : 'You have no cards at all.'} Their slides stay hidden until the two sides alternate, and a slide that repeats the taste the room just saw gets nothing.</p>
       <div class="row">${S.hand.map((c, i) => `<button class="slide" data-i="${i}" aria-pressed="false">
         <b><span class="num" hidden></span> ${TASTE_GLYPH[c.taste]} ${esc(c.name)}</b><small>quality ${c.q}; ${fans[c.taste]} in your room want ${TASTE[c.taste]}; about ${claps(c, G.leader(P).id)} claps if you present it</small></button>`).join('')}</div>
       <div class="pres" id="presbox"></div>
       <div class="stick"><p class="who" id="pickcount">${countText()}</p>
-      <button class="btn" id="go" ${S.hand.length ? 'disabled' : ''}>${S.hand.length ? 'Present these' : 'Go up empty-handed'}</button></div>`;
+      <button class="btn" id="go" ${S.hand.length ? 'hidden' : ''}>${S.hand.length ? (want === 1 ? 'Present it' : 'Present these') : 'Go up empty-handed'}</button></div>`;
     wire = el => {
       const refresh = () => {
         el.querySelectorAll('.slide').forEach(b => {
@@ -1623,14 +1636,12 @@ function talkSheet(T, mode, resolve) {
         const box = el.querySelector('#presbox'); box.innerHTML = presHtml();
         box.querySelectorAll('select').forEach(sel => sel.onchange = () => { by[+sel.dataset.k] = +sel.value; });
         el.querySelector('#pickcount').textContent = countText();
-        const go = el.querySelector('#go');
-        go.disabled = S.hand.length > 0 && picked.length === 0;
-        go.textContent = !S.hand.length ? 'Go up empty-handed' : picked.length === 1 ? 'Present this one' : 'Present these';
+        el.querySelector('#go').hidden = S.hand.length > 0 && picked.length < want;
       };
       el.querySelectorAll('.slide').forEach(b => b.onclick = e => {
         e.preventDefault();
         const i = +b.dataset.i; const k = picked.indexOf(i);
-        if (k >= 0) picked.splice(k, 1); else if (picked.length < 3) picked.push(i);
+        if (k >= 0) picked.splice(k, 1); else if (picked.length < want) picked.push(i);
         refresh();
       });
       el.querySelector('#go').onclick = () => { closeSheet(); resolve(picked.map(i => ({ i, by: by[i] ?? G.leader(P).id }))); };
@@ -1691,7 +1702,7 @@ const RULES = [
     <p>The office is not a closed room. Now and then somebody new walks in, through the Lobby or by the Rock, marked ✦ new on the floor. They stop arriving at all hands.</p>
     <p>When time is called, every undecided person still on the floor goes with whichever party has more people standing beside them. Where your units end the last turn matters.</p>`],
   ['The Lobby', `<p>Consultants and contractors wait in the Lobby and are won by pitching, like anyone else. A consultant takes three pitches, then gives your side a standing rule for the rest of the match; the other side can pitch them back. A contractor signs on one pitch, joins your party for two turns, and then goes back to the Lobby to be signed again.</p>`],
-  ['Ending and winning', `<p>After the eighth turn, both sides present. Each picks up to three slides from every card their party still holds, banked or carried, without seeing the other's, and chooses who stands up with each one: anyone of yours still on the floor. The presenter's Charm goes into the slide, an Engineer or IT makes a Gadget slide land harder, and whoever holds the second slide takes the heckle with their Grit. The slides then go up in turns, one side then the other.</p>
+  ['Ending and winning', `<p>After the eighth turn, both sides present. Each picks three slides (or every card, if they hold fewer) from what their party still holds, banked or carried, without seeing the other's, and chooses who stands up with each one: anyone of yours still on the floor. The presenter's Charm goes into the slide, an Engineer or IT makes a Gadget slide land harder, and whoever holds the second slide takes the heckle with their Grit. The slides then go up in turns, one side then the other.</p>
     <p>A slide scores its quality times (2 + 3 × the people in your room who want that taste), times a little for the presenter's Charm. A slide of the same taste as the one the room just saw, from either side, scores nothing. Every enemy unit in the room boos each of your slides, and one of them heckles you: let it go for a few boos, or clap back for a big gain or a bigger loss. A rigged projector blanks your best slide unless somebody checked it.</p>
     <p>Higher claps minus boos takes the office. A tie goes to the bigger crowd.</p>`],
   ['What the numbers mean', `<ul><li><b>Followers</b> in the header: seats in your room at the talk, by taste.</li>
