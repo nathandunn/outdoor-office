@@ -132,6 +132,7 @@ button, .tile, .unit { touch-action: manipulation; -webkit-tap-highlight-color: 
 .pres label { display: block; margin: 6px 0; font-size: 14px; }
 .pres select { font: inherit; font-size: 14px; padding: 3px 6px; border: 2px solid var(--ink); border-radius: 4px; background: #fff; max-width: 100%; }
 .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid var(--ink); vertical-align: -1px; margin-right: 5px; }
+.rc.math td{font-size:12px;vertical-align:top;text-align:left}.rc.math td:first-child{min-width:90px}
 </style>
 </head>
 <body>
@@ -699,11 +700,28 @@ function talkSheet(T, mode, resolve) {
         <p class="who" style="margin-top:8px">Landing is +10 claps. Missing is +6 boos.</p>`;
       wire = el => { el.querySelector('#ign').onclick = () => resolve(false); el.querySelector('#cb').onclick = () => resolve(true); };
     } else if (mode === 'end') {
-      body += `<h3>You ${S.score}, them ${E.score}</h3><div class="row"><button class="btn" id="ok">The verdict</button></div>`;
+      body += `<h3>You ${S.score}, them ${E.score}</h3>${mathHtml(T).replace('<details class="more">', '<details class="more" open>')}<div class="row"><button class="btn" id="ok">The verdict</button></div>`;
       wire = el => el.querySelector('#ok').onclick = () => { closeSheet(); resolve(); };
     }
   }
   sheet(body, wire);
+}
+
+// The working behind both talks: every slide, every consultant, every boo.
+function mathHtml(T) {
+  if (!T || !T.rows) return '';
+  const part = side => {
+    const S = T.sides[side], rows = T.rows.filter(r => r.side === side);
+    const cons = G.consultants().filter(n => n.side === side && (n.cid === 'data' || n.cid === 'keynote')).map(n => n.name);
+    const room = TASTE.map((t, k) => `${G.fans(T, side, k)} ${t}`).join(', ');
+    return `<p style="margin-top:8px"><b style="color:${side === P ? YOU : THEM}">${side === P ? 'You' : 'Them'}</b>: room wants ${room}; enemies booing ${S.booers.length}${cons.length ? `; ${cons.join(' and ')} on ${side === P ? 'your' : 'their'} books` : '; no talk consultants'}.</p>
+      <table class="rc math"><thead><tr><th></th><th>Claps</th><th>Boos</th></tr></thead><tbody>
+      ${rows.map(r => `<tr><td>${r.slide === 'heckle' ? 'Heckle' : `${r.slide}. ${esc(r.card)}`}<br><span class="who">${r.who === 'leader' ? (side === P ? 'you' : 'their leader') : esc(r.who)}</span></td><td>${esc(r.claps || '–')}</td><td>${esc(r.boos || '–')}</td></tr>`).join('')}
+      <tr><td><b>Total</b></td><td><b>${S.claps}</b></td><td><b>${S.boos}</b></td></tr>
+      <tr><td><b>Score</b></td><td colspan="2"><b>${S.claps} − ${S.boos} = ${S.claps - S.boos}</b></td></tr></tbody></table>`;
+  };
+  return `<details class="more"><summary>How the talks were scored</summary>${part(P)}${part(N)}
+    <p class="who">Slide claps: quality × (2 + 3 × fans of that taste) × (1 + 0.1 × presenter Charm), rounded, then consultants. Same taste as the slide before = 0. Each enemy in the room boos 2 a slide; a blank slide boos 4 more.</p></details>`;
 }
 
 function verdict() {
@@ -718,7 +736,7 @@ function verdict() {
       <tr><td>Followers</td><td>${G.crowd[P].length}</td><td>${G.crowd[N].length}</td></tr>
       <tr><td>Cards brought to the talk</td><td>${G.hand(P).length}</td><td>${G.hand(N).length}</td></tr>
       <tr><td>Consultants at the end</td><td>${G.consultants().filter(n => n.side === P).length}</td><td>${G.consultants().filter(n => n.side === N).length}</td></tr>
-      </tbody></table><div class="row"><button class="btn" id="ok">Play again</button></div>`,
+      </tbody></table>${G.how === 'rout' ? '' : mathHtml(G.talk)}<div class="row"><button class="btn" id="ok">Play again</button></div>`,
       el => el.querySelector('#ok').onclick = () => { closeSheet(); res(); });
   });
 }

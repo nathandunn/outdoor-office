@@ -347,14 +347,14 @@ class Game {
       const e = this.unitAt(x, y);
       if (e && e.side === other) {
         const d = this.dmgOf(u, e);
-        out.push({ kind: 'confront', target: e.id, x, y, label: `Argue with ${e.name}`,
+        out.push({ kind: 'confront', target: e.id, x, y, label: `Argue with ${e.name} (${this.roleOf(e)})`,
           sub: `${d}–${d + 1} morale off their ${e.morale}${d >= e.morale ? ', breaks them' : `; they answer back for ${this.counterOf(e, u)}`}` });
         if (!e.leader) {
           const amt = this.pitchAmt(u), at = this.poachAt(e);
-          out.push({ kind: 'poach', target: e.id, x, y, label: `Poach ${e.name}`,
+          out.push({ kind: 'poach', target: e.id, x, y, label: `Poach ${e.name} (${this.roleOf(e)})`,
             sub: e.sway + amt >= at ? `comes over to your side${e.cards.length ? `, with ${e.cards.length} card${e.cards.length === 1 ? '' : 's'}` : ''}` : `wavers ${e.sway + amt} of ${at}; they steady by 1 each turn` });
         }
-        if (e.cards.length) out.push({ kind: 'pickpocket', target: e.id, x, y, label: `Pickpocket ${e.name}`,
+        if (e.cards.length) out.push({ kind: 'pickpocket', target: e.id, x, y, label: `Pickpocket ${e.name} (${this.roleOf(e)})`,
           sub: `${Math.round(100 * this.pickChance(u))}% to lift one of their ${e.cards.length} card${e.cards.length === 1 ? '' : 's'}` });
       }
       const t = this.tile(x, y);
@@ -378,7 +378,7 @@ class Game {
       const f = this.followerAt(x, y);
       if (f && f.follower === other) {
         const amt = this.pitchAmt(u), have = f.for === u.side ? f.amt : 0;
-        out.push({ kind: 'winback', target: f.id, x, y, label: `Win over ${f.name}`,
+        out.push({ kind: 'winback', target: f.id, x, y, label: `Win over ${f.name} (${ROLE_NAME[f.role]})`,
           sub: `their follower, wants ${TASTE[f.taste]}; ${have + amt >= A.JOIN_AT ? 'comes over to you' : `wavers ${have + amt} of ${A.JOIN_AT}; they steady by 1 each turn`}` });
       }
     }
@@ -408,7 +408,7 @@ class Game {
         if (u.cards.length < A.CARRY) out.push({ ...base, label: ab.name, sub: ab.what });
         break;
       case RO.IT:
-        for (const e of within(this.active(other), 4)) out.push({ ...base, target: e.id, x: e.x, y: e.y, label: `${ab.name} ${e.name}`, sub: `${e.cards.length ? 'they drop a card; ' : ''}their ability waits ${A.CD} turns` });
+        for (const e of within(this.active(other), 4)) out.push({ ...base, target: e.id, x: e.x, y: e.y, label: `${ab.name} ${e.name} (${this.roleOf(e)})`, sub: `${e.cards.length ? 'they drop a card; ' : ''}their ability waits ${A.CD} turns` });
         break;
       case RO.HR:
         for (const v of within(this.active(u.side), 1)) if (v.morale < v.max) out.push({ ...base, target: v.id, x: v.x, y: v.y, label: `${ab.name} ${v === u ? 'yourself' : v.name}`, sub: `back up to ${Math.min(v.max, v.morale + 6)} of ${v.max}` });
@@ -425,7 +425,7 @@ class Game {
         }
         break;
       case RO.LEGAL:
-        for (const e of within(this.active(other), 4)) if (!e.rooted) out.push({ ...base, target: e.id, x: e.x, y: e.y, label: `${ab.name} on ${e.name}`, sub: 'they cannot move on their next turn' });
+        for (const e of within(this.active(other), 4)) if (!e.rooted) out.push({ ...base, target: e.id, x: e.x, y: e.y, label: `${ab.name} on ${e.name} (${this.roleOf(e)})`, sub: 'they cannot move on their next turn' });
         break;
       case RO.INTERN: {
         if (u.cards.length >= A.CARRY) break;
@@ -832,7 +832,7 @@ class Game {
     }
   }
   startTalk() {
-    const T = { sides: {}, order: this.crowd[P].length <= this.crowd[N].length ? [N, P] : [P, N], lines: [], slot: 0, pending: null, last: null, done: false };
+    const T = { sides: {}, order: this.crowd[P].length <= this.crowd[N].length ? [N, P] : [P, N], lines: [], rows: [], slot: 0, pending: null, last: null, done: false };
     for (const side of [P, N]) {
       const other = this.other(side);
       T.sides[side] = {
@@ -847,13 +847,25 @@ class Game {
   presenters(side) { const a = this.active(side).filter(u => u.kind === 'staff'); return a.length ? a : [this.leader(side)]; }
   presenter(side, by) { return (by !== undefined && this.units.find(u => u.id === by && u.side === side)) || this.leader(side); }
   // Whoever stands up with the slide brings their own Charm to it, and an Engineer or IT makes a Gadget land harder.
-  slideClaps(T, side, c, by) {
-    if (c.taste < 0) return 0;
+  roleOf(e) {
+    if (e.kind === 'contractor') return 'contractor';
+    const r = e.job >= 0 ? ROLE_NAME[e.job] : 'Staff';
+    return e.leader ? `${r}, leader` : r;
+  }
+  slideClaps(T, side, c, by) { return this.slideMath(T, side, c, by).total; }
+  // Every part of a slide's claps, so the end of the talk can show its working.
+  slideMath(T, side, c, by) {
+    if (c.taste < 0) return { total: 0, text: 'blank: the projector was rigged' };
     const who = this.presenter(side, by === undefined ? c.by : by);
-    let v = c.q * (2 + 3 * this.fans(T, side, c.taste)) * (1 + 0.1 * who.stats[0]);
-    if (c.taste === 0 && this.has(side, 'data')) v *= 1.5;
-    if (c.taste === 2 && this.gadgetHand(who)) v += this.fans(T, side, 2);
-    return Math.round(v) + (this.has(side, 'keynote') ? 3 : 0);
+    const fans = this.fans(T, side, c.taste), charm = who.stats[0];
+    let v = c.q * (2 + 3 * fans) * (1 + 0.1 * charm);
+    let text = `q${c.q} × (2 + 3×${fans} fans) × ${(1 + 0.1 * charm).toFixed(1)} Charm`;
+    if (c.taste === 0 && this.has(side, 'data')) { v *= 1.5; text += ' × 1.5 Data Whisperer'; }
+    if (c.taste === 2 && this.gadgetHand(who)) { v += fans; text += ` + ${fans} ${ROLE_NAME[who.job]} gadget`; }
+    const key = this.has(side, 'keynote') ? 3 : 0;
+    if (key) text += ' + 3 Keynote';
+    const total = Math.round(v) + key;
+    return { total, text: `${text} = ${total}` };
   }
   // Best three, no two of a taste in a row where it can be helped, each with the best free presenter.
   aiPick(T, side) {
@@ -896,9 +908,14 @@ class Game {
     const pr = this.presenter(side, c.by);
     const who = pr.leader ? (side === P ? 'You' : 'Your nemesis') : `${pr.name}${side === P ? '' : ' (theirs)'}`;
     const bored = T.last && c.taste >= 0 && T.last.taste === c.taste;
-    const cl = bored ? 0 : this.slideClaps(T, side, c);
+    const m = this.slideMath(T, side, c);
+    const cl = bored ? 0 : m.total;
     const b = 2 * S.booers.length + (c.taste < 0 ? 4 : 0);
     S.claps += cl; S.boos += b;
+    (T.rows || (T.rows = [])).push({ side, slide: i + 1, who: pr.leader ? 'leader' : pr.name,
+      card: c.taste < 0 ? 'Blank' : `${c.name} (${TASTE[c.taste]})`,
+      claps: bored ? `${m.text}, but same taste as the last slide: 0` : m.text, claps_n: cl,
+      boos: c.taste < 0 ? `2×${S.booers.length} enemies + 4 blank = ${b}` : `2×${S.booers.length} enemies = ${b}`, boos_n: b });
     T.lines.push(c.taste < 0 ? `${who}: a blank slide. ${b} boos.`
       : `${who}: ${c.name} (${TASTE[c.taste]} q${c.q})${bored ? ', but the room just saw ' + TASTE[c.taste] + ': nothing' : `: ${cl} claps`}${b ? `, ${b} boos` : ''}.`);
     T.last = c;
@@ -911,10 +928,11 @@ class Game {
     S.heckled = true; T.pending = null;
     const pr = this.presenter(side, S.heckledBy);
     const who = pr.leader ? (side === P ? 'You' : 'Your nemesis') : pr.name;
+    const heck = (claps, claps_n, boos, boos_n) => (T.rows || (T.rows = [])).push({ side, slide: 'heckle', who: pr.leader ? 'leader' : pr.name, card: 'Heckle', claps, claps_n, boos, boos_n });
     if (back) {
-      if (this.r() < this.heckleOdds(side, pr.id)) { S.claps += 10; T.lines.push(`${who} clapped back and the room roared: +10.`); }
-      else { S.boos += 6; T.lines.push(`${who} clapped back and it fell flat: +6 boos.`); }
-    } else { const c = this.ignoreCost(side, pr.id); S.boos += c; T.lines.push(`${who} let the heckle go: +${c} boos.`); }
+      if (this.r() < this.heckleOdds(side, pr.id)) { S.claps += 10; T.lines.push(`${who} clapped back and the room roared: +10.`); heck(`clapped back and landed = 10`, 10, '', 0); }
+      else { S.boos += 6; T.lines.push(`${who} clapped back and it fell flat: +6 boos.`); heck('', 0, 'clapped back and missed = 6', 6); }
+    } else { const c = this.ignoreCost(side, pr.id); S.boos += c; T.lines.push(`${who} let the heckle go: +${c} boos.`); heck('', 0, `let it go: 5 − ${pr.stats[3]} Grit = ${c}`, c); }
   }
   finishTalk(T) {
     for (const side of [P, N]) { const S = T.sides[side]; S.score = S.claps - S.boos; this.say(side, `${side === P ? 'Your' : 'Their'} talk: ${S.claps} claps, ${S.boos} boos, ${S.score} all told.`); }
