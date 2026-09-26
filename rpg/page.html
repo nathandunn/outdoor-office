@@ -258,7 +258,11 @@ function drawBoard() {
     }
     if (t === 'C' || t === 'c') {
       const inside = (G.closets[key(x, y)] || []).map(c => `${c.name} (${TASTE[c.taste]}, quality ${c.q})`).join(' and ');
-      s += `<g><title>${t === 'C' ? (G.raidable(P, x) ? `Their supply closet, yours to raid: ${inside}` : `Your supply closet, locked to you and theirs to raid: ${inside}`) : 'An emptied supply closet'}</title>${ICON.closet(X, Y, t === 'c')}</g>`;
+      const locked = t === 'C' && !G.raidable(P, x);
+      s += `<g class="npc" data-look="c:${x},${y}"><title>${t === 'C' ? (!locked ? `Their supply closet, yours to raid: ${inside}` : `Your supply closet, locked to you and theirs to raid: ${inside}`) : 'An emptied supply closet'}</title>${ICON.closet(X, Y, t === 'c')}`;
+      if (locked) s += `<g transform="translate(${X + 30} ${Y + 26})"><rect x="-6" y="-2" width="12" height="10" rx="1.5" fill="${INK}"/><path d="M-3.5 -2 v-3 a3.5 3.5 0 0 1 7 0 v3" fill="none" stroke="${INK}" stroke-width="2"/></g>`;
+      if (UI.info === `c:${x},${y}`) s += `<rect x="${X + 4}" y="${Y + 2}" width="${CS - 8}" height="${CS - 4}" fill="none" stroke="${INK}" stroke-width="2.5" stroke-dasharray="4 3"/>`;
+      s += `</g>`;
     }
   }
   for (const [x, y, l] of LABELS) s += `<text class="hand" x="${cx(x)}" y="${OY + y * CS + 11}" text-anchor="middle" font-size="17" fill="${INK}" opacity=".55">${l}</text>`;
@@ -301,6 +305,15 @@ function drawBoard() {
   for (const k in reach) {
     const [x, y] = k.split(',').map(Number);
     s += `<rect class="tile" data-x="${x}" data-y="${y}" x="${OX + x * CS}" y="${OY + y * CS}" width="${CS}" height="${CS}" fill="#000" fill-opacity="0" style="cursor:pointer"/>`;
+  }
+  // followers: small people in their side's colour, milling about
+  for (const side of [P, N]) for (const f of G.crowd[side]) {
+    if (f.x < 0) continue;
+    const X = cx(f.x), Y = cy(f.y) + 2, c = side === P ? YOU : THEM;
+    s += `<g class="npc" data-id="${f.id}"><title>${esc(f.name)}, ${ROLE_NAME[f.role]}: ${side === P ? 'your' : 'their'} follower. Wants ${TASTE[f.taste]}.</title>
+      <circle cx="${X}" cy="${Y - 9}" r="5" fill="${c}" stroke="${INK}" stroke-width="1.2"/>
+      <path d="M${X - 8} ${Y + 10} q0 -12 8 -12 q8 0 8 12 z" fill="${c}" stroke="${INK}" stroke-width="1.2"/>
+      ${UI.info === f.id ? `<circle cx="${X}" cy="${Y}" r="17" fill="none" stroke="${INK}" stroke-width="2" stroke-dasharray="4 3"/>` : ''}</g>`;
   }
   // units
   for (const u of G.units) {
@@ -361,7 +374,7 @@ function drawBoard() {
   // Touch screens have no tooltips: tapping someone undecided says who they are and what they want.
   svg.querySelectorAll('.npc').forEach(el => el.addEventListener('click', e => {
     e.stopPropagation();
-    const id = +el.dataset.id;
+    const id = el.dataset.look || +el.dataset.id;
     UI.info = UI.info === id ? null : id;
     render();
   }));
@@ -373,7 +386,7 @@ function drawBoard() {
       if (a) { doAct(sel, a); return; }
     }
     if (UI.turn && sel && sel.side === P && !sel.moved && u === sel) return;
-    UI.sel = u.id; render();
+    UI.sel = u.id; UI.info = null; render();
   }));
 }
 
@@ -384,6 +397,7 @@ function legend() {
     <span><svg width="26" height="26" viewBox="-13 -13 26 26"><circle r="9" fill="#fffdf6" stroke="${INK}"/></svg>undecided</span>
     <span><svg width="26" height="26" viewBox="-13 -13 26 26"><circle r="9" fill="${mix(YOU, 0.5)}" stroke="${YOU}" stroke-width="2"/><circle r="11.5" fill="none" stroke="${YOU}" stroke-width="2.5" stroke-dasharray="36 99"/></svg>warming to you</span>
     <span><svg width="26" height="26" viewBox="-13 -13 26 26"><circle r="9" fill="${mix(THEM, 0.5)}" stroke="${THEM}" stroke-width="2"/><circle r="11.5" fill="none" stroke="${THEM}" stroke-width="2.5" stroke-dasharray="36 99"/></svg>warming to them</span>
+    <span><svg width="26" height="26" viewBox="-13 -13 26 26"><circle cy="-6" r="4" fill="${YOU}" stroke="${INK}"/><path d="M-7 9 q0 -10 7 -10 q7 0 7 10 z" fill="${YOU}" stroke="${INK}"/></svg>your follower</span>
     <span><svg width="26" height="26" viewBox="-13 -13 26 26"><rect x="-8" y="-8" width="16" height="16" rx="2" transform="rotate(45)" fill="#fffdf6" stroke="${INK}" stroke-width="1.6"/></svg>consultant</span>
     <span><svg width="26" height="26" viewBox="-13 -13 26 26"><rect x="-9" y="-9" width="18" height="18" rx="4" fill="#fffdf6" stroke="${INK}" stroke-width="1.6" stroke-dasharray="3 2"/></svg>contractor for hire</span>
     <span><svg width="26" height="26" viewBox="-13 -13 26 26"><circle r="12" fill="${HI}" opacity=".75"/><circle r="8" fill="#fffdf6" stroke="${INK}"/></svg>within reach of the unit you picked</span>
@@ -443,11 +457,24 @@ function render() {
 }
 
 function lookHtml() {
+  const box = (name, body) => `<div class="look"><button class="x" id="lookx" aria-label="Close">×</button><b>${name}</b> ${body}</div>`;
+  if (typeof UI.info === 'string' && UI.info.startsWith('c:')) {
+    const [x, y] = UI.info.slice(2).split(',').map(Number);
+    const inside = G.closets[key(x, y)];
+    if (!inside) return box('Supply closet', 'Emptied.');
+    const list = inside.map(c => `${TASTE_GLYPH[c.taste]} ${esc(c.name)}, quality ${c.q}`).join('; ');
+    return G.raidable(P, x) ? box('Their supply closet', `Yours to raid: stand next to it and pick "Raid". Inside: ${list}.`)
+      : box('Your supply closet', `Locked to you: it is theirs to raid, so guard it. Inside: ${list}.`);
+  }
+  for (const side of [P, N]) {
+    const f = G.crowd[side].find(v => v.id === UI.info);
+    if (f) return box(esc(f.name), `${ROLE_NAME[f.role]}, ${side === P ? 'your' : 'their'} follower. Wants ${TASTE_GLYPH[f.taste]} ${TASTE[f.taste]}, so ${side === P ? 'your' : 'their'} ${TASTE[f.taste]} slides land harder. Followers wander on their own.`);
+  }
   const n = UI.info && G.neutrals.find(v => v.id === UI.info);
   if (!n) { UI.info = null; return ''; }
   const at = G.joinAt(n);
   const what = n.kind === 'consultant' ? `Consultant: ${esc(n.what)}. ${n.side === P ? 'Consulting for you.' : n.side === N ? 'Consulting for them.' : `Three pitches to win.`}`
-    : n.kind === 'contractor' ? `Contractor: ${esc(n.what)}. One pitch and they join you for ${A.CONTRACT_TURNS} turns.`
+    : n.kind === 'contractor' ? `Contractor: ${esc(n.what)}. One pitch and they join you from next turn, for ${A.CONTRACT_TURNS} turns.`
     : `${ROLE_NAME[n.role]}, undecided. Wants ${TASTE_GLYPH[n.taste]} ${TASTE[n.taste]}. Two pitches to win.`;
   const lean = n.amt && n.for !== NONE && !(n.kind === 'consultant' && n.side !== NONE) ? ` <span style="color:${n.for === P ? YOU : THEM}">Warming to ${n.for === P ? 'you' : 'them'}: ${n.amt} of ${at}.</span>` : '';
   return `<div class="look"><button class="x" id="lookx" aria-label="Close">×</button><b>${esc(n.name)}</b> ${what}${lean}${pitchable().has(n.id) ? ' <span class="reach">In reach of whoever you picked.</span>' : ''}</div>`;
@@ -466,7 +493,7 @@ function renderUnit() {
   const mine = u.side === P;
   const ab = u.kind === 'staff' && u.job >= 0 ? ABILITY[u.job] : null;
   const head = `<div class="unit"><h3 style="color:${mine ? YOU : THEM}">${esc(u.name)}</h3>
-    <p class="role">${u.kind === 'contractor' ? `Contractor, back to the Lobby after turn ${u.expires - 1}` : ROLE_NAME[u.job]}${u.leader ? ', leader' : ''}. Morale ${u.morale} of ${u.max}. Moves ${G.moveOf(u)}${u.cards.length >= A.HEAVY_LOAD ? ', slowed by the load' : ''}.</p></div>`;
+    <p class="role">${u.kind === 'contractor' ? `Contractor${u.cid === 'heavy' ? ' (blocks: their people stop next to it)' : ''}, back to the Lobby after turn ${u.expires - 1}` : ROLE_NAME[u.job]}${u.leader ? ', leader' : ''}. Morale ${u.morale} of ${u.max}. Moves ${G.moveOf(u)}${u.cards.length >= A.HEAVY_LOAD ? ', slowed by the load' : ''}.</p></div>`;
   let details = `<div class="unit details"><p class="role">Wants ${TASTE[u.taste]}.</p>
     <div class="bar ${mine ? '' : 'them'}"><i style="width:${100 * u.morale / u.max}%"></i></div>
     <div class="stats4">${STAT_NAME.map((n, i) => `<div><b>${u.stats[i]}</b>${n}</div>`).join('')}</div>
@@ -475,7 +502,8 @@ function renderUnit() {
   let h = lookHtml() + head;
   let acts = [];
   if (UI.turn && mine) {
-    if (u.acted) h += `<p class="waiting">${u.moved || stuck(u) ? 'Done for this turn.' : `Action done. You can still move: ${PHONE ? 'tap' : 'click'} a pink tile, or pick someone else.`}</p>`;
+    if (u.kind === 'contractor' && u.signed === G.turn) h += `<p class="waiting">Just signed. Ready to move and act next turn, then with you for ${A.CONTRACT_TURNS} turns.</p>`;
+    else if (u.acted) h += `<p class="waiting">${u.moved || stuck(u) ? 'Done for this turn.' : `Action done. You can still move: ${PHONE ? 'tap' : 'click'} a pink tile, or pick someone else.`}</p>`;
     else {
       acts = G.actions(u);
       if (!u.moved) h += `<p class="who">Move and act, in either order: ${PHONE ? 'tap' : 'click'} a pink tile to move, or act from here first.</p>`;
@@ -707,7 +735,7 @@ const RULES = [
   ['Followers', `<p>Followers are the only thing you keep. Every undecided person on the floor can be won over, and every one you win fills a seat at your final talk, wanting a particular taste of slide. A room full of people who want Data makes a Data slide land; a room that wants nothing you brought stays quiet.</p>
     <p>The office is not a closed room. Now and then somebody new walks in, through the Lobby or by the Rock, marked ✦ new on the floor. They stop arriving at all hands.</p>
     <p>When time is called, every undecided person still on the floor goes with whichever party has more people standing beside them. Where your units end the last turn matters.</p>`],
-  ['The Lobby', `<p>Consultants and contractors wait in the Lobby and are won by pitching, like anyone else. A consultant takes three pitches, then gives your side a standing rule for the rest of the match; the other side can pitch them back. A contractor signs on one pitch, joins your party for two turns, and then goes back to the Lobby to be signed again.</p>`],
+  ['The Lobby', `<p>Consultants and contractors wait in the Lobby and are won by pitching, like anyone else. A consultant takes three pitches, then gives your side a standing rule for the rest of the match; the other side can pitch them back. A contractor signs on one pitch, is ready from your next turn, stays two turns, and then goes back to the Lobby to be signed again. The Runner is fast. The Heavy blocks: their people must stop when they step next to it, so it can hold a doorway.</p>`],
   ['Ending and winning', `<p>After the eighth turn, both sides present. Each picks three slides (or every card, if they hold fewer) from what their party still holds, banked or carried, without seeing the other's, and chooses who stands up with each one: anyone of yours still on the floor. The presenter's Charm goes into the slide, an Engineer or IT makes a Gadget slide land harder, and whoever holds the second slide takes the heckle with their Grit. The slides then go up in turns, one side then the other.</p>
     <p>A slide scores its quality times (2 + 3 × the people in your room who want that taste), times a little for the presenter's Charm. A slide of the same taste as the one the room just saw, from either side, scores nothing. Every enemy unit in the room boos each of your slides, and one of them heckles you: let it go for a few boos, or clap back for a big gain or a bigger loss. A rigged projector blanks your best slide unless somebody checked it.</p>
     <p>Higher claps minus boos takes the office. A tie goes to the bigger crowd.</p>`],

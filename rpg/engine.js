@@ -59,7 +59,7 @@ const CONSULTANTS = [
 // Contractors stand in the Lobby too. One pitch and they join your party for two turns, then go back to waiting.
 const CONTRACTORS = [
   { id: 'runner', name: 'Runner', stats: [0, 1, 5, 1], morale: 6, what: 'fast legs, weak argument; fetches loot' },
-  { id: 'heavy', name: 'Heavy', stats: [3, 0, 1, 3], morale: 10, what: 'slow, loud, hard to shout down; blocks a door' },
+  { id: 'heavy', name: 'Heavy', stats: [3, 0, 1, 3], morale: 10, what: 'slow and loud, and blocks the way: their people must stop when they step next to the Heavy' },
 ];
 const CONSULT_AT = 3;
 // Where new arrivals walk in: through the Lobby, or up the stairs by the Rock.
@@ -264,6 +264,8 @@ class Game {
       const [x, y] = q.shift();
       const d = dist[key(x, y)];
       if (d >= mv) continue;
+      // Stepping next to one of their Heavies ends the walk there.
+      if (d > 0 && this.heavyNear(u.side, x, y)) continue;
       for (const [dx, dy] of DIRS) {
         const nx = x + dx, ny = y + dy, k = key(nx, ny);
         if (dist[k] !== undefined || !WALK.has(this.tile(nx, ny)) || this.neutralAt(nx, ny)) continue;
@@ -279,6 +281,9 @@ class Game {
       if (!o || o === u) out[k] = dist[k];
     }
     return { tiles: out, prev };
+  }
+  heavyNear(side, x, y) {
+    return this.units.some(h => h.cid === 'heavy' && h.kind === 'contractor' && !h.gone && !h.sulk && h.side !== side && h.x >= 0 && man(h.x, h.y, x, y) === 1);
   }
   pathTo(u, x, y) {
     const { prev } = this.reach(u);
@@ -364,7 +369,7 @@ class Game {
           if (n.side !== u.side) out.push({ kind: 'pitch', target: n.id, x, y, label: `${n.side === other ? 'Poach' : 'Woo'} ${n.name}`,
             sub: `consultant: ${n.what}; ${this.wouldJoin(n, u.side, amt) ? 'comes over to you' : `warms by ${amt} of ${CONSULT_AT}`}` });
         } else if (n.kind === 'contractor') {
-          out.push({ kind: 'pitch', target: n.id, x, y, label: `Sign the ${n.name}`, sub: `${n.what}; joins your party for ${A.CONTRACT_TURNS} turns` });
+          out.push({ kind: 'pitch', target: n.id, x, y, label: `Sign the ${n.name}`, sub: `${n.what}; joins your party from next turn, for ${A.CONTRACT_TURNS} turns` });
         } else {
           out.push({ kind: 'pitch', target: n.id, x, y, label: `Pitch ${n.name}`,
             sub: `${ROLE_NAME[n.role]}, wants ${TASTE[n.taste]}; ${this.wouldJoin(n, u.side, amt) ? 'becomes your follower' : `warms by ${amt}`}` });
@@ -523,7 +528,8 @@ class Game {
     if (n.kind === 'contractor') {
       const c = CONTRACTORS.find(c => c.id === n.cid);
       this.neutrals = this.neutrals.filter(x => x !== n);
-      const v = this.mkUnit(u.side, -1, c.stats, false, 'contractor', { name: c.name, morale: c.morale, expires: this.turn + A.CONTRACT_TURNS });
+      const v = this.mkUnit(u.side, -1, c.stats, false, 'contractor', { name: c.name, morale: c.morale, expires: this.turn + A.CONTRACT_TURNS + 1 });
+      v.signed = this.turn;
       v.cid = c.id;
       this.placeNear(v, n.x, n.y);
       v.moved = v.acted = true;
@@ -538,6 +544,7 @@ class Game {
         this.say(u.side, was === NONE ? `${n.name} now consults for ${mine} side.` : `${n.name} was poached: now consulting for ${mine} side.`);
       } else {
         this.neutrals = this.neutrals.filter(x => x !== n);
+        n.follower = u.side;
         this.crowd[u.side].push(n);
         this.say(u.side, `${n.name} (${ROLE_NAME[n.role]}, ${TASTE[n.taste]}) is now ${mine} follower.`);
       }
@@ -595,10 +602,25 @@ class Game {
   }
 
   // --- turns ---
+  // Followers mill about on their own side's turn: a couple of steps, never onto anyone, never into the desks, closets or doors.
+  wander(side) {
+    const taken = new Set([...this.units.filter(u => u.x >= 0 && !u.gone && !u.sulk).map(u => key(u.x, u.y)), ...this.neutrals.map(n => key(n.x, n.y)), ...this.crowd[P].concat(this.crowd[N]).map(n => key(n.x, n.y))]);
+    const busy = (x, y) => this.adj(x, y).some(([ax, ay]) => 'DSGKCcRL'.includes(this.tile(ax, ay)));
+    for (const n of this.crowd[side]) {
+      for (let step = 0; step < 2; step++) {
+        if (this.r() < 0.35) break;
+        const opts = this.adj(n.x, n.y).filter(([x, y]) => WALK.has(this.tile(x, y)) && !'abRL'.includes(this.tile(x, y)) && !taken.has(key(x, y)) && !busy(x, y));
+        if (!opts.length) break;
+        const [x, y] = this.pick(opts);
+        taken.delete(key(n.x, n.y)); n.x = x; n.y = y; taken.add(key(x, y));
+      }
+    }
+  }
   startTurn(side) {
     this.side = side;
     // A new turn: now and then somebody new walks in, until all hands.
     if (side === this.first && this.turn > 1 && this.turn <= A.TURNS - A.FUSE && this.r() < 0.6) this.arrival();
+    this.wander(side);
     for (const u of this.units.filter(u => u.side === side && !u.gone)) {
       u.moved = false; u.acted = false; u.from = null; u.bonus = 0;
       if (u.sway > 0) u.sway--;
@@ -607,7 +629,7 @@ class Game {
         u.gone = true;
         if (u.cards.length) (this.loot[key(u.x, u.y)] ||= []).push(...u.cards);
         u.cards = [];
-        this.say(side, `The ${u.name}'s two turns are up. Back to the Lobby${u.x >= 0 ? ', cards left on the floor' : ''}.`);
+        this.say(side, `The ${u.name}'s time is up. Back to the Lobby${u.x >= 0 && u.cards.length ? ', cards left on the floor' : ''}.`);
         u.x = u.y = -1;
         this.addContractorNpc(CONTRACTORS.find(c => c.id === u.cid));
         continue;
@@ -780,6 +802,7 @@ class Game {
       const side = near[0] > near[1] ? P : near[1] > near[0] ? N : NONE;
       if (side === NONE) continue;
       this.neutrals = this.neutrals.filter(x => x !== n);
+      n.follower = side;
       this.crowd[side].push(n);
       this.say(side, `All hands: ${n.name} went with ${side === P ? 'your' : 'their'} people.`);
     }

@@ -24,9 +24,11 @@ for two turns, coming back at 2 morale. From turn 4, holding still costs a point
 turns are **all hands**: anyone broken stays broken, and when time is called every undecided neutral goes
 with whichever party has more people standing beside them. All of one side's staff broken at once is a rout.
 
-There is no money. Followers are what you win, and what fills the room at your talk. **Consultants** and
-**contractors** wait in the Lobby and are won by pitching like anyone else: a consultant takes three pitches and
-can be pitched back off you; a contractor signs on one and joins your party for two turns, then returns.
+There is no money. Followers are what you win, and what fills the room at your talk; won followers stay on the
+floor as small figures in their side's colour and wander on their side's turn. **Consultants** and **contractors**
+wait in the Lobby and are won by pitching like anyone else: a consultant takes three pitches and can be pitched back
+off you; a contractor signs on one, is ready from your next turn and stays two turns, then returns. The Runner is
+fast; the Heavy blocks: their people must stop when they step next to it.
 
 The **final talk**: each leader picks three slides without seeing the other's, and they are shown in turns.
 A slide of the same taste as the one the room just saw scores nothing. Otherwise a slide scores
