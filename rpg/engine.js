@@ -68,7 +68,7 @@ const LOBBY_SPOTS = [[10, 10], [8, 11], [12, 11], [9, 10], [11, 10]];
 const P = 0, N = 1, NONE = -1;
 const A = {
   TURNS: 8, W: 21, H: 13, SULK: 2, CD: 3, CARRY: 4, SLIDES: 3, JOIN_AT: 2, DESK_STOCK: 2,
-  CONTRACT_TURNS: 2, FREE_POINTS: 4, STAT_MAX: 5, DUD: 'a blank slide',
+  CONTRACT_TURNS: 3, FREE_POINTS: 4, STAT_MAX: 5, DUD: 'a blank slide',
   HEAVY_LOAD: 3, HOLD_COST_FROM: 4, FUSE: 2,
 };
 const NAMES = ['Ada', 'Bram', 'Cleo', 'Dev', 'Esme', 'Finn', 'Gus', 'Hana', 'Ines', 'Jo', 'Kit', 'Lars', 'Mina', 'Ned',
@@ -375,6 +375,12 @@ class Game {
             sub: `${ROLE_NAME[n.role]}, wants ${TASTE[n.taste]}; ${this.wouldJoin(n, u.side, amt) ? 'becomes your follower' : `warms by ${amt}`}` });
         }
       }
+      const f = this.followerAt(x, y);
+      if (f && f.follower === other) {
+        const amt = this.pitchAmt(u), have = f.for === u.side ? f.amt : 0;
+        out.push({ kind: 'winback', target: f.id, x, y, label: `Win over ${f.name}`,
+          sub: `their follower, wants ${TASTE[f.taste]}; ${have + amt >= A.JOIN_AT ? 'comes over to you' : `wavers ${have + amt} of ${A.JOIN_AT}; they steady by 1 each turn`}` });
+      }
     }
     if (u.cd === 0 && u.job >= 0 && u.kind === 'staff') for (const a of this.abilityTargets(u)) out.push(a);
     if (this.onHome(u) && u.cards.length) out.push({ kind: 'bank', label: `Bank ${u.cards.length} card${u.cards.length === 1 ? '' : 's'}`, sub: 'left in your office: safe from pickpockets and drops, and still yours at the talk' });
@@ -433,7 +439,21 @@ class Game {
     return out;
   }
 
-  byId(id) { return this.units.find(v => v.id === id) || this.neutrals.find(v => v.id === id); }
+  byId(id) { return this.units.find(v => v.id === id) || this.neutrals.find(v => v.id === id) || this.crowd[P].find(v => v.id === id) || this.crowd[N].find(v => v.id === id); }
+  followerAt(x, y) { return this.crowd[P].find(n => n.x === x && n.y === y) || this.crowd[N].find(n => n.x === x && n.y === y); }
+  winBack(u, f) {
+    const was = f.follower;
+    const amt = this.pitchAmt(u);
+    if (f.for !== u.side) { f.for = u.side; f.amt = 0; }
+    f.amt += amt;
+    const mine = u.side === P ? 'your' : 'their';
+    if (f.amt >= A.JOIN_AT) {
+      this.crowd[was] = this.crowd[was].filter(x => x !== f);
+      f.follower = u.side; f.amt = 0; f.for = NONE;
+      this.crowd[u.side].push(f);
+      this.say(u.side, `${f.name} has been won over, and is now ${mine} follower.`);
+    } else this.say(u.side, `${this.is(u)} working on ${f.name}: wavering, ${f.amt} of ${A.JOIN_AT}.`);
+  }
 
   act(u, a) {
     if (u.acted) return;
@@ -472,6 +492,7 @@ class Game {
         break;
       }
       case 'pitch': this.pitch(u, t, this.pitchAmt(u)); break;
+      case 'winback': this.winBack(u, t); break;
       case 'poach': {
         t.sway += this.pitchAmt(u);
         if (t.sway >= this.poachAt(t)) this.defect(t, u.side);
@@ -621,6 +642,7 @@ class Game {
     // A new turn: now and then somebody new walks in, until all hands.
     if (side === this.first && this.turn > 1 && this.turn <= A.TURNS - A.FUSE && this.r() < 0.6) this.arrival();
     this.wander(side);
+    for (const f of this.crowd[side]) if (f.amt > 0 && --f.amt <= 0) { f.amt = 0; f.for = NONE; }
     for (const u of this.units.filter(u => u.side === side && !u.gone)) {
       u.moved = false; u.acted = false; u.from = null; u.bonus = 0;
       if (u.sway > 0) u.sway--;
@@ -671,6 +693,7 @@ class Game {
       else if (n.kind === 'contractor') { if (this.turn <= A.TURNS - 2) goals.push([n.x, n.y, 3]); }
       else goals.push([n.x, n.y, 2.2 + (n.for === other ? 0.6 : 0)]);
     }
+    for (const f of this.crowd[other]) if (f.x >= 0) goals.push([f.x, f.y, 2 + (f.for === u.side ? 1 : 0)]);
     for (const e of this.active(other)) goals.push([e.x, e.y, (u.stats[0] >= 2 ? 4.5 : 2.5) + 4 * (1 - e.morale / e.max) + e.cards.length * 1.2 + (e.leader ? 1 : 0)]);
     if (u.cards.length >= 2) for (const [x, y] of this.spawnTiles(u.side)) goals.push([x, y, 1.2 * u.cards.length]);
     if (!this.rigged[other] && this.turn >= 3 && this.turn < A.TURNS) for (let y = 0; y < A.H; y++) for (let x = 0; x < A.W; x++) if (this.map[y][x] === 'R') goals.push([x, y, 2]);
@@ -722,6 +745,7 @@ class Game {
       case 'pickpocket': return this.pickChance(u) * 3 * (u.cards.length < A.CARRY ? 1 : 0);
       case 'desk': return 2 + 0.3 * this.demand(u.side)[a.taste] + (a.taste === 2 && this.gadgetHand(u) ? 1 : 0);
       case 'closet': return 6;
+      case 'winback': return 2.2 + ((t.for === u.side ? t.amt : 0) + this.pitchAmt(u) >= A.JOIN_AT ? 3.5 : 0);
       case 'pitch':
         if (t.kind === 'contractor') return this.turn <= A.TURNS - 2 ? 3.6 : 0;
         if (t.kind === 'consultant') return 2.5 + (this.wouldJoin(t, u.side, this.pitchAmt(u)) ? 3.5 : 0) + (t.side === this.other(u.side) ? 1 : 0);

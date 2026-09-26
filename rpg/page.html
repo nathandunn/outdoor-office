@@ -310,10 +310,12 @@ function drawBoard() {
   for (const side of [P, N]) for (const f of G.crowd[side]) {
     if (f.x < 0) continue;
     const X = cx(f.x), Y = cy(f.y) + 2, c = side === P ? YOU : THEM;
+    if (canPitch.has(f.id)) s += `<circle cx="${X}" cy="${Y - 1}" r="18" fill="${HI}" opacity=".75"/>`;
     s += `<g class="npc" data-id="${f.id}"><title>${esc(f.name)}, ${ROLE_NAME[f.role]}: ${side === P ? 'your' : 'their'} follower. Wants ${TASTE[f.taste]}.</title>
       <circle cx="${X}" cy="${Y - 9}" r="5" fill="${c}" stroke="${INK}" stroke-width="1.2"/>
       <path d="M${X - 8} ${Y + 10} q0 -12 8 -12 q8 0 8 12 z" fill="${c}" stroke="${INK}" stroke-width="1.2"/>
-      ${UI.info === f.id ? `<circle cx="${X}" cy="${Y}" r="17" fill="none" stroke="${INK}" stroke-width="2" stroke-dasharray="4 3"/>` : ''}</g>`;
+      ${UI.info === f.id ? `<circle cx="${X}" cy="${Y}" r="17" fill="none" stroke="${INK}" stroke-width="2" stroke-dasharray="4 3"/>` : ''}
+      ${f.amt > 0 && f.for !== NONE ? `<circle cx="${X}" cy="${Y}" r="15" fill="none" stroke="${f.for === P ? YOU : THEM}" stroke-width="3" stroke-dasharray="${(f.amt / A.JOIN_AT) * 94.2} 100" transform="rotate(-90 ${X} ${Y})"/>` : ''}</g>`;
   }
   // units
   for (const u of G.units) {
@@ -417,7 +419,10 @@ function pitchable() {
   const tiles = u.moved ? { [key(u.x, u.y)]: 0 } : G.reach(u).tiles;
   for (const k in tiles) {
     const [x, y] = k.split(',').map(Number);
-    for (const [ax, ay] of G.adj(x, y)) { const n = G.neutralAt(ax, ay); if (n && !(n.kind === 'consultant' && n.side === P)) out.add(n.id); }
+    for (const [ax, ay] of G.adj(x, y)) {
+      const n = G.neutralAt(ax, ay); if (n && !(n.kind === 'consultant' && n.side === P)) out.add(n.id);
+      const f = G.followerAt(ax, ay); if (f && f.follower === N) out.add(f.id);
+    }
   }
   return out;
 }
@@ -468,7 +473,7 @@ function lookHtml() {
   }
   for (const side of [P, N]) {
     const f = G.crowd[side].find(v => v.id === UI.info);
-    if (f) return box(esc(f.name), `${ROLE_NAME[f.role]}, ${side === P ? 'your' : 'their'} follower. Wants ${TASTE_GLYPH[f.taste]} ${TASTE[f.taste]}, so ${side === P ? 'your' : 'their'} ${TASTE[f.taste]} slides land harder. Followers wander on their own.`);
+    if (f) return box(esc(f.name), `${ROLE_NAME[f.role]}, ${side === P ? 'your' : 'their'} follower. Wants ${TASTE_GLYPH[f.taste]} ${TASTE[f.taste]}, so ${side === P ? 'your' : 'their'} ${TASTE[f.taste]} slides land harder. ${side === P ? 'They can pitch them away from you: two pitches, and they steady a point each turn.' : 'Two pitches from people standing next to them wins them over to you.'}${f.amt > 0 && f.for !== NONE ? ` <span style="color:${f.for === P ? YOU : THEM}">Wavering: ${f.amt} of ${A.JOIN_AT}.</span>` : ''}`);
   }
   const n = UI.info && G.neutrals.find(v => v.id === UI.info);
   if (!n) { UI.info = null; return ''; }
@@ -503,7 +508,8 @@ function renderUnit() {
   let acts = [];
   if (UI.turn && mine) {
     if (u.kind === 'contractor' && u.signed === G.turn) h += `<p class="waiting">Just signed. Ready to move and act next turn, then with you for ${A.CONTRACT_TURNS} turns.</p>`;
-    else if (u.acted) h += `<p class="waiting">${u.moved || stuck(u) ? 'Done for this turn.' : `Action done. You can still move: ${PHONE ? 'tap' : 'click'} a pink tile, or pick someone else.`}</p>`;
+    else if (u.acted) h += u.moved || stuck(u) ? `<p class="waiting">Done for this turn.</p>`
+      : `<p class="waiting">Action done. ${PHONE ? 'Tap' : 'Click'} a pink tile to move, or stay where you are.</p><div class="cards"><button class="mv" id="stay"><span class="l">Stay here</span><span class="st"></span><span class="s">done for this turn, without moving</span></button></div>`;
     else {
       acts = G.actions(u);
       if (!u.moved) h += `<p class="who">Move and act, in either order: ${PHONE ? 'tap' : 'click'} a pink tile to move, or act from here first.</p>`;
@@ -516,7 +522,7 @@ function renderUnit() {
   card.innerHTML = h + details;
   wireLook(card);
   const more = card.querySelector('.more'); if (more) more.ontoggle = () => { UI.more = more.open; };
-  card.querySelectorAll('.mv').forEach(btn => {
+  card.querySelectorAll('.mv[data-i]').forEach(btn => {
     const o = acts[+btn.dataset.i];
     btn.onclick = () => doAct(u, o);
     if (CAN_HOVER) {
@@ -526,6 +532,7 @@ function renderUnit() {
     }
   });
   const un = $('#undo'); if (un) un.onclick = () => { G.undoMove(u); render(); };
+  const st = $('#stay'); if (st) st.onclick = () => { u.moved = true; u.from = null; nextUnit(); render(); afterStep(); };
   const e = $('#endturn'); if (e) e.onclick = endTurn;
 }
 
@@ -729,13 +736,14 @@ const RULES = [
     <li><b>Pickpocket</b> an enemy who is carrying cards.</li>
     <li><b>Bank</b> your cards in your own office, or <b>rig</b> or <b>check</b> the projector at the Rock.</li>
     <li><b>Hold.</b> From turn 4, holding costs a point of morale, whether you chose to or had nothing in reach. Interns and contractors are used to standing about and pay nothing.</li></ul>
-    <p>The turn ends by itself once nobody has anything left to choose. Or press <b>End turn for all</b>: anyone who has not acted holds.</p>`],
+    <p>After acting, a person can still move, or press <b>Stay here</b> to finish without moving. The turn ends by itself once nobody has anything left to choose. Or press <b>End turn for all</b>: anyone who has not acted holds.</p>`],
   ['Morale and breaking', `<p>Morale is a unit's health. At zero they are demoralised: they drop every card they carry onto the floor and sulk in the car park for two turns, coming back at 2 morale. Contractors simply quit.</p>
     <p>In the last two turns, anyone broken stays broken. Break the whole enemy party at once and you win on the spot.</p>`],
   ['Followers', `<p>Followers are the only thing you keep. Every undecided person on the floor can be won over, and every one you win fills a seat at your final talk, wanting a particular taste of slide. A room full of people who want Data makes a Data slide land; a room that wants nothing you brought stays quiet.</p>
+    <p>Won followers stay on the floor as small figures in your colour, wandering on your turn. They can be won back: two pitches from the other side's people standing next to them brings them over, and they steady a point on each of their own side's turns. Guard yours and go after theirs.</p>
     <p>The office is not a closed room. Now and then somebody new walks in, through the Lobby or by the Rock, marked ✦ new on the floor. They stop arriving at all hands.</p>
     <p>When time is called, every undecided person still on the floor goes with whichever party has more people standing beside them. Where your units end the last turn matters.</p>`],
-  ['The Lobby', `<p>Consultants and contractors wait in the Lobby and are won by pitching, like anyone else. A consultant takes three pitches, then gives your side a standing rule for the rest of the match; the other side can pitch them back. A contractor signs on one pitch, is ready from your next turn, stays two turns, and then goes back to the Lobby to be signed again. The Runner is fast. The Heavy blocks: their people must stop when they step next to it, so it can hold a doorway.</p>`],
+  ['The Lobby', `<p>Consultants and contractors wait in the Lobby and are won by pitching, like anyone else. A consultant takes three pitches, then gives your side a standing rule for the rest of the match; the other side can pitch them back. A contractor signs on one pitch, is ready from your next turn, stays three turns, and then goes back to the Lobby to be signed again. The Runner is fast. The Heavy blocks: their people must stop when they step next to it, so it can hold a doorway.</p>`],
   ['Ending and winning', `<p>After the eighth turn, both sides present. Each picks three slides (or every card, if they hold fewer) from what their party still holds, banked or carried, without seeing the other's, and chooses who stands up with each one: anyone of yours still on the floor. The presenter's Charm goes into the slide, an Engineer or IT makes a Gadget slide land harder, and whoever holds the second slide takes the heckle with their Grit. The slides then go up in turns, one side then the other.</p>
     <p>A slide scores its quality times (2 + 3 × the people in your room who want that taste), times a little for the presenter's Charm. A slide of the same taste as the one the room just saw, from either side, scores nothing. Every enemy unit in the room boos each of your slides, and one of them heckles you: let it go for a few boos, or clap back for a big gain or a bigger loss. A rigged projector blanks your best slide unless somebody checked it.</p>
     <p>Higher claps minus boos takes the office. A tie goes to the bigger crowd.</p>`],
