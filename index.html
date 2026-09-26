@@ -185,7 +185,7 @@ button, .tile, .unit { touch-action: manipulation; -webkit-tap-highlight-color: 
 .bar i { display: block; height: 100%; background: var(--you); }
 .bar.them i { background: var(--them); }
 .unit h3 { font-family: var(--hand); font-size: 30px; line-height: 1; margin: 0; }
-.unit .job { color: var(--ink-soft); font-size: 13px; margin: 2px 0 6px; }
+.unit .role { color: var(--ink-soft); font-size: 13px; margin: 2px 0 6px; }
 .stats4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; text-align: center; margin: 6px 0; }
 .stats4 div { border: 1.5px solid var(--ink); border-radius: 3px; background: #fff; font-size: 11px; }
 .stats4 b { display: block; font-family: var(--hand); font-size: 22px; line-height: 1; }
@@ -202,6 +202,8 @@ button, .tile, .unit { touch-action: manipulation; -webkit-tap-highlight-color: 
 .cons li { margin: 2px 0; }
 .cons ul { margin: 4px 0 0; padding-left: 18px; }
 .mv.attack .l { color: var(--you); }
+.unit.details { margin-top: 12px; padding-top: 8px; border-top: 1px dashed rgba(31, 36, 64, .3); }
+.unit h3 + .role { margin-bottom: 8px; }
 .help { width: 34px; height: 34px; border-radius: 50%; border: 2px solid #f6e9d8; background: none; color: #f6e9d8; font-family: var(--hand); font-size: 26px; font-weight: 700; line-height: 1; cursor: pointer; align-self: center; }
 .help:hover { background: #f6e9d8; color: var(--gum); }
 .rules p { max-width: 68ch; }
@@ -240,8 +242,8 @@ button, .tile, .unit { touch-action: manipulation; -webkit-tap-highlight-color: 
     <details class="keybox" id="keybox"><summary>Key</summary><div class="legend" id="legend"></div></details>
   </section>
   <aside class="col">
-    <div class="idx status" id="status"></div>
     <div class="idx moves" id="unitcard"></div>
+    <div class="idx status" id="status"></div>
     <div class="idx" id="rostercard"></div>
     <div class="idx minutes">
       <h2>Minutes</h2>
@@ -1465,12 +1467,14 @@ function renderUnit() {
   }
   const mine = u.side === P;
   const ab = u.kind === 'staff' && u.job >= 0 ? ABILITY[u.job] : null;
-  let h = `<div class="unit"><h3 style="color:${mine ? YOU : THEM}">${esc(u.name)}</h3>
-    <p class="job">${u.kind === 'contractor' ? `Contractor, back to the Lobby after turn ${u.expires - 1}` : ROLE_NAME[u.job]}${u.leader ? ', leader' : ''}. Wants ${TASTE[u.taste]}. Moves ${G.moveOf(u)}${u.cards.length >= A.HEAVY_LOAD ? ', slowed by the load' : ''}.</p>
-    <div class="bar ${mine ? '' : 'them'}"><i style="width:${100 * u.morale / u.max}%"></i></div><p class="who">Morale ${u.morale} of ${u.max}</p>
+  const head = `<div class="unit"><h3 style="color:${mine ? YOU : THEM}">${esc(u.name)}</h3>
+    <p class="role">${u.kind === 'contractor' ? `Contractor, back to the Lobby after turn ${u.expires - 1}` : ROLE_NAME[u.job]}${u.leader ? ', leader' : ''}. Morale ${u.morale} of ${u.max}. Moves ${G.moveOf(u)}${u.cards.length >= A.HEAVY_LOAD ? ', slowed by the load' : ''}.</p></div>`;
+  let details = `<div class="unit details"><p class="role">Wants ${TASTE[u.taste]}.</p>
+    <div class="bar ${mine ? '' : 'them'}"><i style="width:${100 * u.morale / u.max}%"></i></div>
     <div class="stats4">${STAT_NAME.map((n, i) => `<div><b>${u.stats[i]}</b>${n}</div>`).join('')}</div>
     ${ab ? `<p class="abil"><b>${ab.name}</b>: ${esc(ab.what)}. ${u.cd ? `Ready in ${u.cd} turn${u.cd === 1 ? '' : 's'}.` : 'Ready.'}</p>` : ''}
     <div class="chips">${u.cards.length ? u.cards.map(c => `<span class="chip">${TASTE_GLYPH[c.taste]} ${esc(c.name)} <small>q${c.q}</small></span>`).join('') : '<span class="who">No cards.</span>'}</div></div>`;
+  let h = head;
   let acts = [];
   if (UI.turn && mine) {
     if (u.acted) h += `<p class="waiting">${u.moved || stuck(u) ? 'Done for this turn.' : `Action done. You can still move: ${PHONE ? 'tap' : 'click'} a pink tile, or pick someone else.`}</p>`;
@@ -1481,7 +1485,7 @@ function renderUnit() {
     }
     h += `<div class="ctl">${u.from && !u.acted ? '<button class="btn alt" id="undo">Undo move</button>' : ''}${endTurnButton()}</div>`;
   }
-  card.innerHTML = h;
+  card.innerHTML = h + details;
   card.querySelectorAll('.mv').forEach(btn => {
     const o = acts[+btn.dataset.i];
     btn.onclick = () => doAct(u, o);
