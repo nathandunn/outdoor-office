@@ -10,17 +10,64 @@
 /*__STYLE__*/
 <style>
 .boardwrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-@media (min-width: 1001px) { .table { grid-template-columns: minmax(0, 1fr) 400px; } }
+@media (min-width: 1001px) {
+  .table { grid-template-columns: minmax(0, 1fr) 400px; }
+  /* Laptops: the side column stays beside the board and scrolls on its own, so the actions never leave the screen. */
+  .col { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding-bottom: 4px; }
+  /* The board never grows taller than the window. */
+  #board { max-height: calc(100vh - 96px); }
+}
+/* One-line header everywhere: title, turn, scores, and the ? on the right. */
+.gum { flex-wrap: nowrap; align-items: center; gap: 14px; }
+.gum h1 { white-space: nowrap; }
+.gum .score { flex-wrap: nowrap; white-space: nowrap; }
+.gum .help { flex: none; }
+.gum .where { white-space: nowrap; }
+@media (max-width: 1400px) { .gum h1 { font-size: 32px; } .gum .score { font-size: 26px; } }
+/* What you tapped on the floor, for screens with no hover. */
+.look { background: #fff; border: 1.5px solid var(--ink); border-radius: 4px; padding: 6px 10px; font-size: 13px; margin: 0 0 10px; }
+.look b { font-family: var(--hand); font-size: 20px; }
+.look .x { float: right; background: none; border: 0; font-size: 18px; line-height: 1; cursor: pointer; color: var(--ink-soft); padding: 0 2px; }
+.npc { cursor: pointer; }
+.more > summary { cursor: pointer; font-family: var(--hand); font-size: 20px; color: var(--ink-soft); list-style: none; margin-top: 10px; }
+.more > summary::-webkit-details-marker { display: none; }
+.more > summary::before { content: "▸ "; } .more[open] > summary::before { content: "▾ "; }
+.keys { font-size: 12px; color: var(--ink-soft); margin: 8px 0 0; }
+.keys kbd { font-family: var(--body); font-size: 11px; border: 1px solid var(--ink-soft); border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; background: #fff; }
 /* Phones: the board first, as a side-scrolling strip at a size a finger can hit, then what the picked unit can do. */
 @media (max-width: 1000px) {
   .table { grid-template-columns: minmax(0, 1fr); }
   .col { display: contents; }
   .pad { order: 1; } #unitcard { order: 2; } #status { order: 3; } #rostercard { order: 4; } .minutes { order: 5; }
-  #board { min-width: 740px; }
+  #board { min-width: 860px; }
   .boardwrap::after { content: "swipe the floor sideways"; display: block; text-align: center; font-size: 12px; color: var(--ink-soft); padding: 2px 0 4px; }
   .legend { padding: 4px 12px 12px; }
   .cards { max-height: none; }
   .mv { padding: 9px 12px; }
+  /* Phones: the picked unit's card docks to the bottom of the screen, so the floor and what you can do are both in view. */
+  #unitcard { position: fixed; left: 8px; right: 8px; bottom: 0; z-index: 8; max-height: 44vh; overflow-y: auto; overscroll-behavior: contain;
+    margin: 0; border-radius: 8px 8px 0 0; box-shadow: 0 -8px 24px rgba(0,0,0,.35); padding-top: 14px; padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
+  #unitcard::after { content: ""; position: absolute; top: 5px; left: 50%; width: 40px; margin-left: -20px; height: 4px; border-radius: 2px; background: rgba(31, 36, 64, .25); }
+  #unitcard h2, #unitcard h3 { font-size: 24px; line-height: 1; margin: 0 0 2px; }
+  #unitcard .cards { gap: 6px; }
+  #unitcard .mv { padding: 6px 10px; }
+  #unitcard .mv .l { font-size: 21px; }
+  #unitcard .ctl { margin-top: 8px; }
+  body { padding-bottom: 46vh; }
+  .gum { padding: 8px 12px 6px; gap: 8px; }
+  .gum h1 { font-size: 22px; }
+  .gum .where { font-size: 12px; }
+  .gum .score { font-size: 20px; gap: 8px; margin-left: auto; }
+  .gum .score small { display: none; }
+  .gum .help { width: 30px; height: 30px; font-size: 22px; }
+}
+@media (max-width: 420px) { .gum h1 { font-size: 0; } .gum h1::after { content: "Outdoor Office"; font-size: 20px; } }
+/* Phones on their side: the card docks to the right instead. */
+@media (max-width: 1000px) and (orientation: landscape) and (max-height: 520px) {
+  #unitcard { left: auto; right: 0; top: 0; bottom: 0; width: 300px; max-height: none; border-radius: 8px 0 0 8px; }
+  #unitcard::after { display: none; }
+  body { padding-bottom: 0; }
+  .table { margin-right: 300px; }
 }
 .veil { display: flex; align-items: flex-start; justify-content: center; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
 button, .tile, .unit { touch-action: manipulation; -webkit-tap-highlight-color: rgba(255, 159, 210, .35); }
@@ -238,7 +285,8 @@ function drawBoard() {
       : n.kind === 'contractor' ? `${n.name}, contractor: ${n.what}. One pitch and they join your party for ${A.CONTRACT_TURNS} turns.`
       : `${n.name}, ${ROLE_NAME[n.role]}, undecided. Wants ${TASTE[n.taste]}.`;
     if (n.amt && !owner) title += ` Warming to ${n.for === P ? 'you' : 'them'} (${n.amt} of ${at}).`;
-    s += `<g><title>${esc(title)}</title>`;
+    s += `<g class="npc" data-id="${n.id}"><title>${esc(title)}</title>`;
+    if (UI.info === n.id) s += `<circle cx="${X}" cy="${Y}" r="23" fill="none" stroke="${INK}" stroke-width="2.5" stroke-dasharray="4 3"/>`;
     if (canPitch.has(n.id)) s += `<circle cx="${X}" cy="${Y}" r="21" fill="${HI}" opacity=".75"/>`;
     if (n.kind === 'consultant') s += `<rect x="${X - 13}" y="${Y - 13}" width="26" height="26" rx="3" transform="rotate(45 ${X} ${Y})" fill="${fill}" stroke="${owner ? INK : lean}" stroke-width="${owner ? 1.8 : 2.4}"/>`;
     else if (n.kind === 'contractor') s += `<rect x="${X - 13}" y="${Y - 13}" width="26" height="26" rx="5" fill="#fffdf6" stroke="${INK}" stroke-width="1.8" stroke-dasharray="4 2"/>`;
@@ -290,10 +338,17 @@ function drawBoard() {
   svg.innerHTML = s;
   // On a narrow screen, bring whoever was just picked (or is moving) into view.
   const wrap = $('#boardwrap');
-  if (sel && sel.x >= 0 && UI.scrolledTo !== sel.id && wrap.scrollWidth > wrap.clientWidth + 4) {
+  if (sel && sel.x >= 0 && UI.scrolledTo !== sel.id) {
     UI.scrolledTo = sel.id;
-    const px = (cx(sel.x) / 1000) * svg.getBoundingClientRect().width;
-    wrap.scrollTo({ left: Math.max(0, px - wrap.clientWidth / 2), behavior: RELAX ? 'auto' : 'smooth' });
+    const box = svg.getBoundingClientRect(), k = box.width / 1000;
+    if (wrap.scrollWidth > wrap.clientWidth + 4) wrap.scrollTo({ left: Math.max(0, cx(sel.x) * k - wrap.clientWidth / 2), behavior: RELAX ? 'auto' : 'smooth' });
+    // Vertically, only when they are hidden behind the docked card or off the top of the screen.
+    if (PHONE) {
+      const dock = $('#unitcard').getBoundingClientRect();
+      const visibleBottom = Math.min(innerHeight, dock.top > 0 ? dock.top : innerHeight);
+      const y = box.top + cy(sel.y) * (box.height / 690);
+      if (y < 40 || y > visibleBottom - 40) window.scrollTo({ top: Math.max(0, scrollY + y - visibleBottom / 2), behavior: RELAX ? 'auto' : 'smooth' });
+    }
   }
   const legendEl = $('#legend'); if (legendEl && !legendEl.innerHTML) legend();
   svg.querySelectorAll('.tile').forEach(el => el.addEventListener('click', () => {
@@ -302,6 +357,13 @@ function drawBoard() {
     if (finished(sel)) nextUnit();
     render();
     afterStep();
+  }));
+  // Touch screens have no tooltips: tapping someone undecided says who they are and what they want.
+  svg.querySelectorAll('.npc').forEach(el => el.addEventListener('click', e => {
+    e.stopPropagation();
+    const id = +el.dataset.id;
+    UI.info = UI.info === id ? null : id;
+    render();
   }));
   svg.querySelectorAll('.unit').forEach(el => el.addEventListener('click', e => {
     e.stopPropagation();
@@ -352,7 +414,7 @@ function render() {
   drawBoard();
   const a = G.active(P).length, b = G.active(N).length;
   $('#score').innerHTML = `<span class="y">you ${G.crowd[P].length} <small>follower${G.crowd[P].length === 1 ? '' : 's'}</small></span><span class="t">them ${G.crowd[N].length} <small>follower${G.crowd[N].length === 1 ? '' : 's'}</small></span>`;
-  $('#where').textContent = G.over ? 'Match over' : `Turn ${G.turn} of ${A.TURNS}`;
+  $('#where').textContent = G.over ? 'Match over' : PHONE ? `Turn ${G.turn}/${A.TURNS}` : `Turn ${G.turn} of ${A.TURNS}`;
   const d = G.demand(P);
   const canPitch = pitchable();
   const flags = [];
@@ -380,13 +442,25 @@ function render() {
   UI.seen = G.log.length;
 }
 
+function lookHtml() {
+  const n = UI.info && G.neutrals.find(v => v.id === UI.info);
+  if (!n) { UI.info = null; return ''; }
+  const at = G.joinAt(n);
+  const what = n.kind === 'consultant' ? `Consultant: ${esc(n.what)}. ${n.side === P ? 'Consulting for you.' : n.side === N ? 'Consulting for them.' : `Three pitches to win.`}`
+    : n.kind === 'contractor' ? `Contractor: ${esc(n.what)}. One pitch and they join you for ${A.CONTRACT_TURNS} turns.`
+    : `${ROLE_NAME[n.role]}, undecided. Wants ${TASTE_GLYPH[n.taste]} ${TASTE[n.taste]}. Two pitches to win.`;
+  const lean = n.amt && n.for !== NONE && !(n.kind === 'consultant' && n.side !== NONE) ? ` <span style="color:${n.for === P ? YOU : THEM}">Warming to ${n.for === P ? 'you' : 'them'}: ${n.amt} of ${at}.</span>` : '';
+  return `<div class="look"><button class="x" id="lookx" aria-label="Close">×</button><b>${esc(n.name)}</b> ${what}${lean}${pitchable().has(n.id) ? ' <span class="reach">In reach of whoever you picked.</span>' : ''}</div>`;
+}
+function wireLook(card) { const x = card.querySelector('#lookx'); if (x) x.onclick = () => { UI.info = null; render(); }; }
 function renderUnit() {
   const card = $('#unitcard');
   const u = UI.sel ? G.byId(UI.sel) : null;
   if (!u || u.sulk || u.gone) {
-    card.innerHTML = `<h2>${UI.turn ? 'Pick someone' : 'Watching'}</h2><p class="waiting">${UI.turn ? `${PHONE ? 'Tap' : 'Click'} one of your people on the floor.` : 'Their party is moving…'}</p>
+    card.innerHTML = `${lookHtml()}<h2>${UI.turn ? 'Pick someone' : 'Watching'}</h2><p class="waiting">${UI.turn ? `${PHONE ? 'Tap' : 'Click'} one of your people on the floor.` : 'Their party is moving…'}</p>
       ${UI.turn ? `<div class="ctl">${endTurnButton()}</div>` : ''}`;
     const e = $('#endturn'); if (e) e.onclick = endTurn;
+    wireLook(card);
     return;
   }
   const mine = u.side === P;
@@ -398,7 +472,7 @@ function renderUnit() {
     <div class="stats4">${STAT_NAME.map((n, i) => `<div><b>${u.stats[i]}</b>${n}</div>`).join('')}</div>
     ${ab ? `<p class="abil"><b>${ab.name}</b>: ${esc(ab.what)}. ${u.cd ? `Ready in ${u.cd} turn${u.cd === 1 ? '' : 's'}.` : 'Ready.'}</p>` : ''}
     <div class="chips">${u.cards.length ? u.cards.map(c => `<span class="chip">${TASTE_GLYPH[c.taste]} ${esc(c.name)} <small>q${c.q}</small></span>`).join('') : '<span class="who">No cards.</span>'}</div></div>`;
-  let h = head;
+  let h = lookHtml() + head;
   let acts = [];
   if (UI.turn && mine) {
     if (u.acted) h += `<p class="waiting">${u.moved || stuck(u) ? 'Done for this turn.' : `Action done. You can still move: ${PHONE ? 'tap' : 'click'} a pink tile, or pick someone else.`}</p>`;
@@ -409,7 +483,11 @@ function renderUnit() {
     }
     h += `<div class="ctl">${u.from && !u.acted ? '<button class="btn alt" id="undo">Undo move</button>' : ''}${endTurnButton()}</div>`;
   }
+  if (PHONE) details = `<details class="more" ${UI.more ? 'open' : ''}><summary>More about ${esc(u.leader && mine ? 'you' : u.name)}</summary>${details}</details>`;
+  else if (UI.turn && mine) details += `<p class="keys"><kbd>N</kbd> next person &nbsp; <kbd>E</kbd> end turn &nbsp; <kbd>?</kbd> rules</p>`;
   card.innerHTML = h + details;
+  wireLook(card);
+  const more = card.querySelector('.more'); if (more) more.ontoggle = () => { UI.more = more.open; };
   card.querySelectorAll('.mv').forEach(btn => {
     const o = acts[+btn.dataset.i];
     btn.onclick = () => doAct(u, o);
@@ -675,7 +753,17 @@ function howToPlay(tab = 0) {
     el => { el.querySelector('#ok').onclick = closeSheet; el.querySelectorAll('.tab').forEach(b => b.onclick = () => howToPlay(+b.dataset.i)); });
 }
 $('#help').onclick = () => howToPlay(0);
-document.addEventListener('keydown', e => { if (e.key === '?' && $('#veil').hidden) howToPlay(0); });
+document.addEventListener('keydown', e => {
+  if (!$('#veil').hidden || e.ctrlKey || e.metaKey || e.altKey || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  if (e.key === '?') howToPlay(0);
+  else if (UI.turn && (e.key === 'n' || e.key === 'N')) {
+    // the next of yours who still has something to do, round the party
+    const ps = G.active(P).filter(v => !finished(v));
+    if (!ps.length) return;
+    const i = ps.findIndex(v => v.id === UI.sel);
+    UI.sel = ps[(i + 1) % ps.length].id; UI.scrolledTo = null; render();
+  } else if (UI.turn && (e.key === 'e' || e.key === 'E')) endTurn();
+});
 
 // --- wiring ---------------------------------------------------------------------
 const agent = {
